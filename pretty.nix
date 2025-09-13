@@ -1,6 +1,8 @@
 {
   lib,
   stdenv,
+  pkg-config,
+  sdl3,
 }:
 stdenv.mkDerivation {
   name = "pretty";
@@ -8,9 +10,13 @@ stdenv.mkDerivation {
 
   hardeningDisable = [ "format" ];
 
+  nativeBuildInputs = [ pkg-config ];
+
+  buildInputs = [ sdl3 ];
+
   env.PREFIX = "${placeholder "out"}";
 
-  lib = {
+  meta = {
     description = "Portable, reliable, ergonimic - TTY Resources";
     maintainers = with lib.maintainers; [ sigmanificient gurjaka ];
     license = lib.licenses.mit;

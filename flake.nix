@@ -19,6 +19,7 @@
     devShells = forAllSystems (pkgs: {
       default = pkgs.mkShell {
         env.CC = pkgs.stdenv.cc;
+        inputsFrom = [ self.packages.${pkgs.system}.pretty ];
         hardeningDisable = [ "format" ];
         packages = with pkgs; [
           compiledb
