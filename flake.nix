@@ -22,6 +22,7 @@
         hardeningDisable = [ "format" ];
         packages = with pkgs; [
           compiledb
+          clang-tools
         ];
       };
     });
