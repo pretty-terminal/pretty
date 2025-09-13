@@ -1,50 +1,28 @@
 {
   description = "Pretty's development flake - portable, reliable, ergonimic - TTY";
 
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-  };
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
-  outputs = {
-    self,
-    nixpkgs,
-  }: let
+  outputs = { self, nixpkgs }: let
     supportedSystems = ["x86_64-linux"];
-    forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: f nixpkgs.legacyPackages.${system});
-
-    flake_attributes = forAllSystems (pkgs: rec {
-      common-system-deps = with pkgs; [
-        # list of dependencies that are system related
-        clang-tools
-        gcc
-        bear
-      ];
-
-      shell-env = {
-        # Environmental configuration e.g expose correct library paths
-      };
-
-      pkgs-wrapped = pkgs.lib.lists.flatten [
-        # Wrap packages into single list e.g system-deps, python-deps, etc...
-        common-system-deps
-      ];
-    });
+    forAllSystems = f: nixpkgs.lib.genAttrs
+      supportedSystems (system: f nixpkgs.legacyPackages.${system});
   in {
     formatter = forAllSystems (pkgs: pkgs.alejandra);
 
-    # If your flake is supposed to expose your project/package,
-    # uncomment following and replace [PKGNAME, PKG_DERIVATION] with correct name/path.
-
-    # packages = forAllSystems (pkgs: {
-    #   default = self.packages.${pkgs.system}.PKGNAME;
-    #
-    #   PKGNAME = import ./nix/PKG-DERIVATION.nix {inherit pkgs self;};
-    # });
+    packages = forAllSystems (pkgs: {
+      default = self.packages.${pkgs.system}.pretty;
+    
+      pretty = pkgs.callPackage ./pretty.nix { };
+    });
 
     devShells = forAllSystems (pkgs: {
       default = pkgs.mkShell {
-        env = flake_attributes.${pkgs.system}.shell-env;
-        packages = flake_attributes.${pkgs.system}.pkgs-wrapped;
+        env.CC = pkgs.stdenv.cc;
+        hardeningDisable = [ "format" ];
+        packages = with pkgs; [
+          compiledb
+        ];
       };
     });
   };
