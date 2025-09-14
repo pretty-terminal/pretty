@@ -52,7 +52,11 @@
         inputsFrom = [ self.packages.${pkgs.system}.pretty ];
 
         hardeningDisable = [ "format" ];
-        packages = with pkgs; [ compiledb ];
+        packages = with pkgs; [
+          compiledb
+        ] ++ [
+          self.packages.${pkgs.system}.cpp-fmt
+        ];
       };
     });
   };
