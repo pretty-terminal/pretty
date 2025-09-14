@@ -6,6 +6,18 @@
 
 #include "macro_utils.h"
 
+#define HEX_TO_INT(h_ascii) ((h_ascii & 0xf) + (9 * ((h_ascii >> 6) & 1)))
+
+#define _BUILD_CHANNEL_VAL(cd, cu)
+
+#define HEX_TO_RGB(hex)                                                       \
+    (HEX_TO_INT(hex[0]) << 4) | HEX_TO_INT(hex[1]),                           \
+        (HEX_TO_INT(hex[2]) << 4) | HEX_TO_INT(hex[3]),                       \
+        (HEX_TO_INT(hex[4]) << 4) | HEX_TO_INT(hex[5])
+
+// TODO: move to a config system:
+static const uint8_t TRANSPARENCY_LEVEL = 242; // ~95%
+
 static void display_fps_metrics(SDL_Window *win)
 {
     static unsigned short frames = 0;
@@ -34,8 +46,10 @@ int main(void)
     SDL_Window *win;
     SDL_Renderer *renderer;
 
-    if (!SDL_CreateWindowAndRenderer(
-            "examples/renderer/clear", 720, 480, 0, &win, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer("examples/renderer/clear", 720, 480,
+            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+                SDL_WINDOW_TRANSPARENT,
+            &win, &renderer)) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -47,8 +61,20 @@ int main(void)
         SDL_RenderPresent(renderer);
 
         for (SDL_Event event; SDL_PollEvent(&event);) {
-            if (event.type == SDL_EVENT_QUIT) {
+            SDL_SetRenderDrawColor(
+                renderer, HEX_TO_RGB("1A1C31"), TRANSPARENCY_LEVEL);
+            switch (event.type) {
+            case SDL_EVENT_QUIT:
                 is_running = false;
+                break;
+
+            case SDL_EVENT_WINDOW_RESIZED:
+                SDL_Log("Window resized: %dx%d", event.window.data1,
+                    event.window.data2);
+                SDL_SetRenderViewport(renderer, NULL);
+                break;
+
+            default:
                 break;
             }
         }
