@@ -18,15 +18,16 @@
 
 #define _BUILD_CHANNEL_VAL(cd, cu)
 
-#define HEX_TO_RGB(hex)                                                       \
-    (HEX_TO_INT(hex[0]) << 4) | HEX_TO_INT(hex[1]),                           \
-        (HEX_TO_INT(hex[2]) << 4) | HEX_TO_INT(hex[3]),                       \
-        (HEX_TO_INT(hex[4]) << 4) | HEX_TO_INT(hex[5])
+#define HEX_TO_RGB(hex)                             \
+    (HEX_TO_INT(hex[0]) << 4) | HEX_TO_INT(hex[1]), \
+    (HEX_TO_INT(hex[2]) << 4) | HEX_TO_INT(hex[3]), \
+    (HEX_TO_INT(hex[4]) << 4) | HEX_TO_INT(hex[5])
 
 // TODO: move to a config system:
 static const uint8_t TRANSPARENCY_LEVEL = 242; // ~95%
 
-static void display_fps_metrics(SDL_Window *win)
+static
+void display_fps_metrics(SDL_Window *win)
 {
     static unsigned short frames = 0;
     static Uint64 last_time = 0;
@@ -50,27 +51,30 @@ int main(void)
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+
     SDL_Window *win;
     SDL_Renderer *renderer;
 
-    if (!SDL_CreateWindowAndRenderer("examples/renderer/clear", SCREEN_WIDTH,
-            SCREEN_HEIGHT,
-            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
-                SDL_WINDOW_TRANSPARENT,
-            &win, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer(
+        "examples/renderer/clear",
+        SCREEN_WIDTH, SCREEN_HEIGHT,
+            SDL_WINDOW_RESIZABLE
+            | SDL_WINDOW_HIGH_PIXEL_DENSITY
+            | SDL_WINDOW_TRANSPARENT,
+        &win, &renderer)
+    ) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
     if (!TTF_Init()) {
-        fprintf(stderr, "SDL_ttf could not initialize! TTF_Error: %s\n",
-            SDL_GetError());
+        fprintf(stderr,
+            "SDL_ttf could not initialize! TTF_Error: %s\n", SDL_GetError());
         SDL_Quit();
         return EXIT_FAILURE;
     }
 
     TTF_Font *font = TTF_OpenFont("JetBrainsMonoNerdFont-Medium.ttf", 12);
-
     if (font == NULL) {
         fprintf(stderr, "Failed to load font: %s\n", SDL_GetError());
         return EXIT_FAILURE;
