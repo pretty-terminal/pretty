@@ -76,10 +76,12 @@ int main(void)
         return EXIT_FAILURE;
     }
 
+    TTF_SetFontHinting(font, TTF_HINTING_MONO);
+
     char hello_world[] = "Hello World!";
     SDL_Color text_color = {HEX_TO_RGB("C1C9EC"), .a = 255};
 
-    SDL_Surface *text_surf = TTF_RenderText_Solid(
+    SDL_Surface *text_surf = TTF_RenderText_Blended(
         font, hello_world, length_of(hello_world) - 1, text_color);
     if (text_surf == NULL) {
         fprintf(stderr, "Failed to create text surface: %s\n", SDL_GetError());
