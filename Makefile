@@ -9,9 +9,9 @@ OBJS := $(SRC:%.c=$(BUILD)/%.o)
 CFLAGS += $(shell cat warning_flags.txt)
 CFLAGS += -O2
 CFLAGS += -iquote src
-CFLAGS += $(shell pkg-config --cflags sdl3)
+CFLAGS += $(shell pkg-config --cflags sdl3 sdl3-ttf)
 
-LDLIBS += $(shell pkg-config --libs sdl3)
+LDLIBS += $(shell pkg-config --libs sdl3 sdl3-ttf)
 
 .PHONY: all
 all: $(OUT)
