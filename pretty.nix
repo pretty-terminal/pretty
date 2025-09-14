@@ -4,6 +4,7 @@
   pkg-config,
   sdl3,
   sdl3-ttf,
+  fontconfig,
 }:
 stdenv.mkDerivation {
   name = "pretty";
@@ -16,6 +17,7 @@ stdenv.mkDerivation {
   buildInputs = [
     sdl3
     sdl3-ttf
+    fontconfig
   ];
 
   env.PREFIX = "${placeholder "out"}";

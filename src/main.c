@@ -3,13 +3,14 @@
 #include <stdlib.h>
 
 #include <SDL3/SDL.h>
-#include <SDL3_ttf/SDL_ttf.h>
-
-#include "SDL3/SDL_error.h"
-#include "SDL3/SDL_pixels.h"
-#include "SDL3/SDL_render.h"
-#include "macro_utils.h"
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_pixels.h>
+#include <SDL3/SDL_render.h>
 #include <SDL3/SDL_video.h>
+#include <SDL3_ttf/SDL_ttf.h>
+#include <fontconfig/fontconfig.h>
+
+#include "macro_utils.h"
 
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 720
@@ -45,6 +46,39 @@ void display_fps_metrics(SDL_Window *win)
     }
 }
 
+static
+char *find_font_path_from_fc_name(const char* font_name)
+{
+    char *out = NULL;
+
+    if (!FcInit())
+        return NULL;
+
+    FcPattern *pattern = FcNameParse((const FcChar8 *)font_name);
+    FcConfigSubstitute(NULL, pattern, FcMatchPattern);
+    FcDefaultSubstitute(pattern);
+
+    FcResult result;
+    FcPattern *matched = FcFontMatch(NULL, pattern, &result);
+    FcChar8 *file = NULL;
+
+    if (matched == NULL) {
+        fprintf(stderr, "Font not found: %s\n", font_name);
+        goto failure;
+    }
+
+    if (FcPatternGetString(matched, FC_FILE, 0, &file) != FcResultMatch) {
+        fprintf(stderr, "Failed to get font file path for: %s\n", font_name);
+        goto failure;
+    }
+
+    out = strdup((char const *)file);
+failure:
+    FcPatternDestroy(pattern);
+    FcPatternDestroy(matched);
+    return out;
+}
+
 int main(void)
 {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -74,7 +108,9 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    TTF_Font *font = TTF_OpenFont("JetBrainsMonoNerdFont-Medium.ttf", 12);
+    char const *font_path = find_font_path_from_fc_name("JetbrainsMono Nerd Font");
+    TTF_Font *font = TTF_OpenFont(font_path, 12);
+
     if (font == NULL) {
         fprintf(stderr, "Failed to load font: %s\n", SDL_GetError());
         return EXIT_FAILURE;

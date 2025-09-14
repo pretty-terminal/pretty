@@ -6,12 +6,15 @@ OUT := pretty
 SRC := $(shell find src -type f -name "*.c")
 OBJS := $(SRC:%.c=$(BUILD)/%.o)
 
+LIBS := sdl3 sdl3-ttf fontconfig
+$(info $(LIBS))
+
 CFLAGS += $(shell cat warning_flags.txt)
 CFLAGS += -O2
 CFLAGS += -iquote src
-CFLAGS += $(shell pkg-config --cflags sdl3 sdl3-ttf)
+CFLAGS += $(shell pkg-config --cflags $(LIBS))
 
-LDLIBS += $(shell pkg-config --libs sdl3 sdl3-ttf)
+LDLIBS += $(shell pkg-config --libs $(LIBS))
 
 .PHONY: all
 all: $(OUT)
