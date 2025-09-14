@@ -11,9 +11,7 @@
 #include <fontconfig/fontconfig.h>
 
 #include "macro_utils.h"
-
-#define SCREEN_WIDTH 1280
-#define SCREEN_HEIGHT 720
+#include "pretty.h"
 
 #define HEX_TO_INT(h_ascii) ((h_ascii & 0xf) + (9 * ((h_ascii >> 6) & 1)))
 
@@ -24,8 +22,22 @@
     (HEX_TO_INT(hex[2]) << 4) | HEX_TO_INT(hex[3]), \
     (HEX_TO_INT(hex[4]) << 4) | HEX_TO_INT(hex[5])
 
-// TODO: move to a config system:
-static const uint8_t TRANSPARENCY_LEVEL = 242; // ~95%
+#define HEX_TO_RGBA(hex) \
+    HEX_TO_RGB(hex),     \
+    (HEX_TO_INT(hex[6]) << 4) | HEX_TO_INT(hex[7])
+
+#define FONT_FAMILY "JetbrainsMono Nerd Font"
+#define FONT_HEIGHT 12
+#define SCREEN_PADDING FONT_HEIGHT
+#define TRANSPARENCY_LEVEL (int)(255 * .95F)
+
+#define SCREEN_WIDTH 1280
+#define SCREEN_HEIGHT 720
+
+#define BG_COLOR HEX_TO_RGB("1A1C31")
+#define TEXT_COLOR HEX_TO_RGBA("C1C9ECFF")
+
+/* ^ TODO: dynamic configuration (see #1) */
 
 static
 void display_fps_metrics(SDL_Window *win)
@@ -108,8 +120,8 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    char const *font_path = find_font_path_from_fc_name("JetbrainsMono Nerd Font");
-    TTF_Font *font = TTF_OpenFont(font_path, 12);
+    char const *font_path = find_font_path_from_fc_name(FONT_FAMILY);
+    TTF_Font *font = TTF_OpenFont(font_path, FONT_HEIGHT);
 
     if (font == NULL) {
         fprintf(stderr, "Failed to load font: %s\n", SDL_GetError());
@@ -118,11 +130,19 @@ int main(void)
 
     TTF_SetFontHinting(font, TTF_HINTING_MONO);
 
-    char hello_world[] = "Hello World!";
-    SDL_Color text_color = {HEX_TO_RGB("C1C9EC"), .a = 255};
+    char *buff = file_read("flake.nix");
+    if (buff == NULL) {
+        fprintf(stderr, "Failed to read the flake.nix file!\n");
+        return EXIT_FAILURE;
+    }
 
-    SDL_Surface *text_surf = TTF_RenderText_Blended(
-        font, hello_world, length_of(hello_world) - 1, text_color);
+    SDL_Color text_color = { HEX_TO_RGBA("C1C9ECFF") };
+    SDL_Surface *text_surf = TTF_RenderText_Blended_Wrapped(
+        font, buff, strlen(buff) - 1,
+        text_color,
+        SCREEN_WIDTH - (2 * SCREEN_PADDING)
+    );
+
     if (text_surf == NULL) {
         fprintf(stderr, "Failed to create text surface: %s\n", SDL_GetError());
         return EXIT_FAILURE;
@@ -140,7 +160,13 @@ int main(void)
 
         SDL_RenderClear(renderer);
 
-        SDL_FRect text_rect = {50, 50, text_surf->w, text_surf->h};
+        SDL_FRect text_rect = {
+            SCREEN_PADDING,
+            SCREEN_PADDING,
+            text_surf->w,
+            text_surf->h
+        };
+
         SDL_RenderTexture(renderer, text_texture, NULL, &text_rect);
 
         SDL_RenderPresent(renderer);
