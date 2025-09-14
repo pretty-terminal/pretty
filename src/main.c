@@ -3,8 +3,16 @@
 #include <stdlib.h>
 
 #include <SDL3/SDL.h>
+#include <SDL3_ttf/SDL_ttf.h>
 
+#include "SDL3/SDL_error.h"
+#include "SDL3/SDL_pixels.h"
+#include "SDL3/SDL_render.h"
 #include "macro_utils.h"
+#include <SDL3/SDL_video.h>
+
+#define SCREEN_WIDTH 1280
+#define SCREEN_HEIGHT 720
 
 #define HEX_TO_INT(h_ascii) ((h_ascii & 0xf) + (9 * ((h_ascii >> 6) & 1)))
 
@@ -42,11 +50,11 @@ int main(void)
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
-
     SDL_Window *win;
     SDL_Renderer *renderer;
 
-    if (!SDL_CreateWindowAndRenderer("examples/renderer/clear", 720, 480,
+    if (!SDL_CreateWindowAndRenderer("examples/renderer/clear", SCREEN_WIDTH,
+            SCREEN_HEIGHT,
             SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
                 SDL_WINDOW_TRANSPARENT,
             &win, &renderer)) {
@@ -54,15 +62,50 @@ int main(void)
         return SDL_APP_FAILURE;
     }
 
+    if (!TTF_Init()) {
+        fprintf(stderr, "SDL_ttf could not initialize! TTF_Error: %s\n",
+            SDL_GetError());
+        SDL_Quit();
+        return EXIT_FAILURE;
+    }
+
+    TTF_Font *font = TTF_OpenFont("JetBrainsMonoNerdFont-Medium.ttf", 12);
+
+    if (font == NULL) {
+        fprintf(stderr, "Failed to load font: %s\n", SDL_GetError());
+        return EXIT_FAILURE;
+    }
+
+    char hello_world[] = "Hello World!";
+    SDL_Color text_color = {HEX_TO_RGB("C1C9EC"), .a = 255};
+
+    SDL_Surface *text_surf = TTF_RenderText_Solid(
+        font, hello_world, length_of(hello_world) - 1, text_color);
+    if (text_surf == NULL) {
+        fprintf(stderr, "Failed to create text surface: %s\n", SDL_GetError());
+        return EXIT_FAILURE;
+    }
+
+    SDL_Texture *text_texture =
+        SDL_CreateTextureFromSurface(renderer, text_surf);
+    if (text_texture == NULL) {
+        fprintf(stderr, "Failed to create text texture: %s\n", SDL_GetError());
+        return EXIT_FAILURE;
+    }
+
     for (bool is_running = true; is_running;) {
         display_fps_metrics(win);
 
         SDL_RenderClear(renderer);
-        SDL_RenderPresent(renderer);
 
+        SDL_FRect text_rect = {50, 50, text_surf->w, text_surf->h};
+        SDL_RenderTexture(renderer, text_texture, NULL, &text_rect);
+
+        SDL_RenderPresent(renderer);
         for (SDL_Event event; SDL_PollEvent(&event);) {
             SDL_SetRenderDrawColor(
                 renderer, HEX_TO_RGB("1A1C31"), TRANSPARENCY_LEVEL);
+
             switch (event.type) {
             case SDL_EVENT_QUIT:
                 is_running = false;
@@ -81,5 +124,8 @@ int main(void)
     }
 
     SDL_DestroyWindow(win);
+    SDL_DestroyRenderer(renderer);
+    SDL_Quit();
+
     return EXIT_SUCCESS;
 }
