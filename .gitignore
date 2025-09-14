@@ -2,3 +2,4 @@ pretty
 *.[aod]
 
 compile_commands.json
+.pre-commit-config.yaml
