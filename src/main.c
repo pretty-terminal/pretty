@@ -39,6 +39,11 @@
 
 /* ^ TODO: dynamic configuration (see #1) */
 
+struct dim {
+    int height;
+    int width;
+};
+
 static
 void display_fps_metrics(SDL_Window *win)
 {
@@ -49,9 +54,9 @@ void display_fps_metrics(SDL_Window *win)
     Uint64 current_time = SDL_GetTicks();
 
     if (current_time - last_time >= 1000) {
-        char title[length_of("Pretty | ..... fps")];
+        char title[length_of("Pretty | ...... fps")];
 
-        snprintf(title, sizeof title, "Pretty | %5hu fps", frames);
+        snprintf(title, sizeof title, "Pretty | %6hu fps", frames);
         SDL_SetWindowTitle(win, title);
         last_time = current_time;
         frames = 0;
@@ -59,7 +64,7 @@ void display_fps_metrics(SDL_Window *win)
 }
 
 static
-char *find_font_path_from_fc_name(const char* font_name)
+char *find_font_path_from_fc_name(const char *font_name)
 {
     char *out = NULL;
 
@@ -68,6 +73,7 @@ char *find_font_path_from_fc_name(const char* font_name)
 
     FcPattern *pattern = FcNameParse((const FcChar8 *)font_name);
     FcConfigSubstitute(NULL, pattern, FcMatchPattern);
+    FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_DEMIBOLD);
     FcDefaultSubstitute(pattern);
 
     FcResult result;
@@ -91,6 +97,51 @@ failure:
     return out;
 }
 
+static
+bool render_frame(
+    SDL_Renderer *renderer,
+    struct dim win_size,
+    char const *text,
+    size_t text_length,
+    TTF_Font *font
+) {
+   SDL_RenderClear(renderer);
+
+   /* TODO: render the text in a way that does not eat the FPS */
+   SDL_Color text_color = { HEX_TO_RGBA("C1C9ECFF") };
+   SDL_Surface *text_surf = TTF_RenderText_Blended_Wrapped(
+       font, text, text_length,
+       text_color,
+       win_size.width - (2 * SCREEN_PADDING)
+    );
+
+    if (text_surf == NULL) {
+        fprintf(stderr, "Failed to create text surface: %s\n", SDL_GetError());
+        return false;
+    }
+
+    SDL_Texture *text_texture =
+        SDL_CreateTextureFromSurface(renderer, text_surf);
+    if (text_texture == NULL) {
+        fprintf(stderr, "Failed to create text texture: %s\n", SDL_GetError());
+        return false;
+    }
+
+    SDL_FRect text_rect = {
+        SCREEN_PADDING,
+        SCREEN_PADDING,
+        text_surf->w,
+        text_surf->h
+    };
+
+    SDL_RenderTexture(renderer, text_texture, NULL, &text_rect);
+    SDL_RenderPresent(renderer);
+
+    SDL_DestroySurface(text_surf);
+    SDL_DestroyTexture(text_texture);
+    return true;
+}
+
 int main(void)
 {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -100,10 +151,11 @@ int main(void)
 
     SDL_Window *win;
     SDL_Renderer *renderer;
+    struct dim win_size = { SCREEN_WIDTH, SCREEN_HEIGHT };
 
     if (!SDL_CreateWindowAndRenderer(
         "examples/renderer/clear",
-        SCREEN_WIDTH, SCREEN_HEIGHT,
+        win_size.width, win_size.height,
             SDL_WINDOW_RESIZABLE
             | SDL_WINDOW_HIGH_PIXEL_DENSITY
             | SDL_WINDOW_TRANSPARENT,
@@ -113,6 +165,8 @@ int main(void)
         return SDL_APP_FAILURE;
     }
 
+    SDL_SetRenderDrawColor(renderer, HEX_TO_RGB("1A1C31"), TRANSPARENCY_LEVEL);
+
     if (!TTF_Init()) {
         fprintf(stderr,
             "SDL_ttf could not initialize! TTF_Error: %s\n", SDL_GetError());
@@ -120,7 +174,7 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    char const *font_path = find_font_path_from_fc_name(FONT_FAMILY);
+    char *font_path = find_font_path_from_fc_name(FONT_FAMILY);
     TTF_Font *font = TTF_OpenFont(font_path, FONT_HEIGHT);
 
     if (font == NULL) {
@@ -128,61 +182,40 @@ int main(void)
         return EXIT_FAILURE;
     }
 
+    free(font_path);
     TTF_SetFontHinting(font, TTF_HINTING_MONO);
 
-    char *buff = file_read("flake.nix");
+    char const *buff = file_read("flake.nix");
     if (buff == NULL) {
         fprintf(stderr, "Failed to read the flake.nix file!\n");
         return EXIT_FAILURE;
     }
 
-    SDL_Color text_color = { HEX_TO_RGBA("C1C9ECFF") };
-    SDL_Surface *text_surf = TTF_RenderText_Blended_Wrapped(
-        font, buff, strlen(buff) - 1,
-        text_color,
-        SCREEN_WIDTH - (2 * SCREEN_PADDING)
-    );
+    size_t text_length = strlen(buff);
 
-    if (text_surf == NULL) {
-        fprintf(stderr, "Failed to create text surface: %s\n", SDL_GetError());
-        return EXIT_FAILURE;
-    }
-
-    SDL_Texture *text_texture =
-        SDL_CreateTextureFromSurface(renderer, text_surf);
-    if (text_texture == NULL) {
-        fprintf(stderr, "Failed to create text texture: %s\n", SDL_GetError());
-        return EXIT_FAILURE;
-    }
+    if (!render_frame(renderer, win_size, buff, text_length, font))
+        return false;
 
     for (bool is_running = true; is_running;) {
         display_fps_metrics(win);
 
-        SDL_RenderClear(renderer);
-
-        SDL_FRect text_rect = {
-            SCREEN_PADDING,
-            SCREEN_PADDING,
-            text_surf->w,
-            text_surf->h
-        };
-
-        SDL_RenderTexture(renderer, text_texture, NULL, &text_rect);
-
-        SDL_RenderPresent(renderer);
         for (SDL_Event event; SDL_PollEvent(&event);) {
-            SDL_SetRenderDrawColor(
-                renderer, HEX_TO_RGB("1A1C31"), TRANSPARENCY_LEVEL);
-
             switch (event.type) {
             case SDL_EVENT_QUIT:
                 is_running = false;
                 break;
 
             case SDL_EVENT_WINDOW_RESIZED:
-                SDL_Log("Window resized: %dx%d", event.window.data1,
-                    event.window.data2);
-                SDL_SetRenderViewport(renderer, NULL);
+                win_size.width = event.window.data1;
+                win_size.height = event.window.data2;
+                SDL_Log("Window resized: %dx%d",
+                    win_size.width, win_size.height);
+
+                /* fallthrough */
+            case SDL_EVENT_WINDOW_EXPOSED:
+                if (!render_frame(renderer, win_size, buff, text_length, font))
+                    return false;
+
                 break;
 
             default:
