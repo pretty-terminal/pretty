@@ -97,48 +97,77 @@ failure:
     return out;
 }
 
-static
-bool render_frame(
+typedef struct {
+    SDL_Surface *surface;
+    SDL_Texture *texture;
+    size_t length;
+} line_renderer;
+
+/* Note: This does the job of TTF_RenderText_Blended_Wrapped,
+ * without computing Wraplines and thus is faster.
+ *
+ * Sadly, we still need to create a bunch of surface/texture.
+ * TODO: investigate
+ **/
+static bool render_frame(
     SDL_Renderer *renderer,
     struct dim win_size,
-    char const *text,
-    size_t text_length,
+    const char *text,
     TTF_Font *font
 ) {
-   SDL_RenderClear(renderer);
+    SDL_RenderClear(renderer);
 
-   /* TODO: render the text in a way that does not eat the FPS */
-   SDL_Color text_color = { HEX_TO_RGBA("C1C9ECFF") };
-   SDL_Surface *text_surf = TTF_RenderText_Blended_Wrapped(
-       font, text, text_length,
-       text_color,
-       win_size.width - (2 * SCREEN_PADDING)
-    );
+    SDL_Color text_color = { HEX_TO_RGBA("C1C9ECFF") };
 
-    if (text_surf == NULL) {
-        fprintf(stderr, "Failed to create text surface: %s\n", SDL_GetError());
-        return false;
+    int advance;
+    /* TODO: call it once for all */
+    TTF_GetGlyphMetrics(font, 'M', NULL, NULL, NULL, NULL, &advance);
+
+    int x = SCREEN_PADDING;
+    int y = SCREEN_PADDING;
+
+    if ((2 * SCREEN_PADDING + advance) >= win_size.width) {
+        /* We dont have room to render anything, so dont */
+        SDL_RenderPresent(renderer);
+        return true;
     }
 
-    SDL_Texture *text_texture =
-        SDL_CreateTextureFromSurface(renderer, text_surf);
-    if (text_texture == NULL) {
-        fprintf(stderr, "Failed to create text texture: %s\n", SDL_GetError());
-        return false;
+    size_t line_max_width = (win_size.width - (2 * SCREEN_PADDING)) / advance;
+    char const *p = text;
+
+    for (; *p != '\0';) {
+        line_renderer line = { 0 };
+
+        for (; *p != '\0' && *p != '\n';) {
+            if (line.length == line_max_width)
+                break;
+            line.length++;
+            p++;
+        }
+
+        line.surface = TTF_RenderText_Blended(
+            font, text, line.length, text_color);
+        if (line.surface == NULL)
+            return false;
+
+        line.texture = SDL_CreateTextureFromSurface(renderer, line.surface);
+        if (line.texture == NULL)
+            return false;
+
+        SDL_DestroySurface(line.surface);
+
+        /* TODO: font size is known */
+        SDL_FRect dst = { x, y, line.length * advance, TTF_GetFontHeight(font) };
+        SDL_RenderTexture(renderer, line.texture, NULL, &dst);
+        SDL_DestroyTexture(line.texture);
+
+        y += TTF_GetFontLineSkip(font);
+        if (*p == '\n')
+            p++;
+        text = p;
     }
 
-    SDL_FRect text_rect = {
-        SCREEN_PADDING,
-        SCREEN_PADDING,
-        text_surf->w,
-        text_surf->h
-    };
-
-    SDL_RenderTexture(renderer, text_texture, NULL, &text_rect);
     SDL_RenderPresent(renderer);
-
-    SDL_DestroySurface(text_surf);
-    SDL_DestroyTexture(text_texture);
     return true;
 }
 
@@ -191,9 +220,7 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    size_t text_length = strlen(buff);
-
-    if (!render_frame(renderer, win_size, buff, text_length, font))
+    if (!render_frame(renderer, win_size, buff, font))
         return false;
 
     for (bool is_running = true; is_running;) {
@@ -213,7 +240,7 @@ int main(void)
 
                 /* fallthrough */
             case SDL_EVENT_WINDOW_EXPOSED:
-                if (!render_frame(renderer, win_size, buff, text_length, font))
+                if (!render_frame(renderer, win_size, buff, font))
                     return false;
 
                 break;

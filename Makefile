@@ -16,6 +16,10 @@ CFLAGS += $(shell pkg-config --cflags $(LIBS))
 
 LDLIBS += $(shell pkg-config --libs $(LIBS))
 
+ifneq ($(RELEASE),)
+CFLAGS += -DWAIT_EVENTS=1
+endif
+
 .PHONY: all
 all: $(OUT)
 

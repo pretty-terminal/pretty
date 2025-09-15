@@ -26,6 +26,8 @@
         hardeningDisable = [ "format" ];
         packages = with pkgs; [
           compiledb
+          valgrind
+          kdePackages.kcachegrind
         ];
       };
     });
