@@ -1,4 +1,5 @@
 #include <limits.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -12,6 +13,7 @@
 
 #include "macro_utils.h"
 #include "pretty.h"
+#include "config.h"
 
 #define HEX_TO_INT(h_ascii) ((h_ascii & 0xf) + (9 * ((h_ascii >> 6) & 1)))
 
@@ -26,16 +28,8 @@
     HEX_TO_RGB(hex),     \
     (HEX_TO_INT(hex[6]) << 4) | HEX_TO_INT(hex[7])
 
-#define FONT_FAMILY "JetbrainsMono Nerd Font"
-#define FONT_HEIGHT 12
-#define SCREEN_PADDING FONT_HEIGHT
-#define TRANSPARENCY_LEVEL (int)(255 * .95F)
-
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 720
-
-#define BG_COLOR HEX_TO_RGB("1A1C31")
-#define TEXT_COLOR HEX_TO_RGBA("C1C9ECFF")
 
 /* ^ TODO: dynamic configuration (see #1) */
 
@@ -113,26 +107,28 @@ static bool render_frame(
     SDL_Renderer *renderer,
     struct dim win_size,
     const char *text,
-    TTF_Font *font
+    const char *foreground,
+    TTF_Font *font,
+    int screen_padding
 ) {
     SDL_RenderClear(renderer);
 
-    SDL_Color text_color = { HEX_TO_RGBA("C1C9ECFF") };
+    SDL_Color text_color = { HEX_TO_RGB(foreground), .a=255 };
 
     int advance;
     /* TODO: call it once for all */
     TTF_GetGlyphMetrics(font, 'M', NULL, NULL, NULL, NULL, &advance);
 
-    int x = SCREEN_PADDING;
-    int y = SCREEN_PADDING;
+    int x = screen_padding;
+    int y = screen_padding;
 
-    if ((2 * SCREEN_PADDING + advance) >= win_size.width) {
+    if ((2 * screen_padding + advance) >= win_size.width) {
         /* We dont have room to render anything, so dont */
         SDL_RenderPresent(renderer);
         return true;
     }
 
-    size_t line_max_width = (win_size.width - (2 * SCREEN_PADDING)) / advance;
+    size_t line_max_width = (win_size.width - (2 * screen_padding)) / advance;
     char const *p = text;
 
     for (; *p != '\0';) {
@@ -195,8 +191,83 @@ bool handle_event(SDL_Event *event, struct dim *win_size, bool *is_running)
     return false;
 }
 
+static
+char *get_config_path(void)
+{
+    const char *home = getenv("HOME");
+
+    if (home == NULL)
+        home = ".";
+
+    const char *relevant_path = "/.config/pretty/config.toml";
+
+    size_t len = strlen(home) + strlen(relevant_path) + 1;
+    char *path = malloc(len);
+
+    if (path)
+        snprintf(path, len, "%s%s", home, relevant_path); 
+
+    return path;
+}
+
+static
+void free_config(config_struct *cfg)
+{
+    for (int i = 0; i < (int)cfg->font->count; i++)
+        free(cfg->font[i].kvs.value);
+
+    for (int i = 0; i < (int)cfg->window->count; i++)
+        free(cfg->window[i].kvs.value);
+
+    for (int i = 0; i < (int)cfg->pallete->count; i++)
+        free(cfg->pallete[i].kvs.value);
+
+    free(cfg->font);
+    free(cfg->window);
+    free(cfg->pallete);
+    free(cfg);
+}
+
 int main(void)
 {
+    char *config_path = get_config_path();
+
+    if (config_path == NULL) {
+        fprintf(stderr, "Failed to get config path!\n Exitting...");
+        return EXIT_FAILURE;
+    }
+
+    char *cat_config = file_read(config_path);
+
+    if (!cat_config) {
+        fprintf(stderr, "Failed to read config!\n");
+        return EXIT_FAILURE;
+    }
+
+    config_struct *config = return_config(cat_config);
+
+    if (config == NULL) {
+        fprintf(stderr, "Failed to get config!\n");
+    }
+
+    if (!config->font || !config->font[0].kvs.value) {
+        fprintf(stderr, "Font config missing!\n");
+        return EXIT_FAILURE;
+    }
+
+    char *font_family = config->font[0].kvs.value;
+    int font_size = atoi(config->font[1].kvs.value);
+
+
+    if (!config->pallete || !config->pallete[0].kvs.value) {
+        fprintf(stderr, "Pallete config missing!\n");
+        return EXIT_FAILURE;
+    }
+
+    char *background = config->pallete[0].kvs.value;
+    char *foreground = config->pallete[1].kvs.value;
+    float opacity = strtof(config->window[0].kvs.value, NULL);
+
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -218,7 +289,7 @@ int main(void)
         return SDL_APP_FAILURE;
     }
 
-    SDL_SetRenderDrawColor(renderer, HEX_TO_RGB("1A1C31"), TRANSPARENCY_LEVEL);
+    SDL_SetRenderDrawColor(renderer, HEX_TO_RGB(background), 255 * opacity);
 #ifdef WAIT_EVENTS
     SDL_SetWindowTitle(win, "Pretty");
 #endif
@@ -230,8 +301,8 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    char *font_path = find_font_path_from_fc_name(FONT_FAMILY);
-    TTF_Font *font = TTF_OpenFont(font_path, FONT_HEIGHT);
+    char *font_path = find_font_path_from_fc_name(font_family);
+    TTF_Font *font = TTF_OpenFont(font_path, font_size);
 
     if (font == NULL) {
         fprintf(stderr, "Failed to load font: %s\n", SDL_GetError());
@@ -247,7 +318,7 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    if (!render_frame(renderer, win_size, buff, font))
+    if (!render_frame(renderer, win_size, buff, foreground, font, font_size))
         return false;
 
     for (bool is_running = true; is_running;) {
@@ -261,7 +332,7 @@ int main(void)
 #else
         for (; SDL_PollEvent(&event); ) {
             if (handle_event(&event, &win_size, &is_running)) {
-                if (!render_frame(renderer, win_size, buff, font))
+                if (!render_frame(renderer, win_size, buff, foreground, font, font_size))
                     return false;
                 break;
             }
@@ -273,6 +344,7 @@ int main(void)
     SDL_DestroyWindow(win);
     SDL_DestroyRenderer(renderer);
     SDL_Quit();
+    free_config(config);
 
     return EXIT_SUCCESS;
 }
