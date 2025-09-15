@@ -20,7 +20,10 @@ stdenv.mkDerivation {
     fontconfig
   ];
 
-  env.PREFIX = "${placeholder "out"}";
+  env = {
+    PREFIX = "${placeholder "out"}";
+    RELEASE = true;
+  };
 
   meta = {
     description = "Portable, reliable, ergonimic - TTY Resources";
