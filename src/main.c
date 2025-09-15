@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_error.h>
@@ -235,6 +236,13 @@ int main(void)
     if (config_path == NULL) {
         fprintf(stderr, "Failed to get config path!\n Exitting...");
         return EXIT_FAILURE;
+    }
+
+    if (access(config_path, F_OK) != 0) {
+        FILE *fptr = fopen(config_path, "w+");
+        fprintf(fptr, "%s", file_read("./default/config.toml"));
+        printf("Wrote default config at %s\n", config_path);
+        fclose(fptr);
     }
 
     char *cat_config = file_read(config_path);

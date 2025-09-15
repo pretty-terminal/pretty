@@ -1,0 +1,11 @@
+[font]
+family = "JetBrains Mono Nerd Font"
+size = 12
+
+[window]
+opacity = 1
+padding = 1em
+
+[palette]
+background = "000000"
+foreground = "98fb98"
