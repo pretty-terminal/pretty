@@ -171,6 +171,30 @@ static bool render_frame(
     return true;
 }
 
+static
+bool handle_event(SDL_Event *event, struct dim *win_size, bool *is_running)
+{
+    switch (event->type) {
+        case SDL_EVENT_QUIT:
+            *is_running = false;
+            break;
+
+        case SDL_EVENT_WINDOW_RESIZED:
+            win_size->width = event->window.data1;
+            win_size->height = event->window.data2;
+            SDL_Log("Window resized: %dx%d",
+                win_size->width, win_size->height);
+
+            /* fallthrough */
+        case SDL_EVENT_WINDOW_EXPOSED:
+            return true;
+
+        default:
+            break;
+    }
+    return false;
+}
+
 int main(void)
 {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -195,6 +219,9 @@ int main(void)
     }
 
     SDL_SetRenderDrawColor(renderer, HEX_TO_RGB("1A1C31"), TRANSPARENCY_LEVEL);
+#ifdef WAIT_EVENTS
+    SDL_SetWindowTitle(win, "Pretty");
+#endif
 
     if (!TTF_Init()) {
         fprintf(stderr,
@@ -224,31 +251,23 @@ int main(void)
         return false;
 
     for (bool is_running = true; is_running;) {
-        display_fps_metrics(win);
-
-        for (SDL_Event event; SDL_PollEvent(&event);) {
-            switch (event.type) {
-            case SDL_EVENT_QUIT:
-                is_running = false;
-                break;
-
-            case SDL_EVENT_WINDOW_RESIZED:
-                win_size.width = event.window.data1;
-                win_size.height = event.window.data2;
-                SDL_Log("Window resized: %dx%d",
-                    win_size.width, win_size.height);
-
-                /* fallthrough */
-            case SDL_EVENT_WINDOW_EXPOSED:
+        SDL_Event event;
+#ifdef WAIT_EVENTS
+        SDL_WaitEvent(&event);
+        if (handle_event(&event, &win_size, &is_running)
+            && !render_frame(renderer, win_size, buff, font)
+        )
+            return false;
+#else
+        for (; SDL_PollEvent(&event); ) {
+            if (handle_event(&event, &win_size, &is_running)) {
                 if (!render_frame(renderer, win_size, buff, font))
                     return false;
-
-                break;
-
-            default:
                 break;
             }
         }
+        display_fps_metrics(win);
+#endif
     }
 
     SDL_DestroyWindow(win);
