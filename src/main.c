@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <SDL3/SDL.h>
@@ -15,6 +16,7 @@
 #include "macro_utils.h"
 #include "pretty.h"
 #include "config.h"
+#include "sys/stat.h"
 
 #define HEX_TO_INT(h_ascii) ((h_ascii & 0xf) + (9 * ((h_ascii >> 6) & 1)))
 
@@ -38,6 +40,12 @@ struct dim {
     int height;
     int width;
 };
+
+
+typedef struct {
+    char *dir;
+    char *path;
+} config_paths;
 
 static
 void display_fps_metrics(SDL_Window *win)
@@ -193,12 +201,19 @@ bool handle_event(SDL_Event *event, struct dim *win_size, bool *is_running)
 }
 
 static
-char *get_config_path(void)
+config_paths get_config_path(void)
 {
     const char *home = getenv("HOME");
 
     if (home == NULL)
         home = ".";
+
+    const char *relevant_dir = "/.config/pretty";
+    size_t rd_len = strlen(home) + strlen(relevant_dir) + 1;
+    char *dir = malloc(rd_len);
+
+    if (dir)
+        snprintf(dir, rd_len, "%s%s", home, relevant_dir); 
 
     const char *relevant_path = "/.config/pretty/config.toml";
 
@@ -208,7 +223,7 @@ char *get_config_path(void)
     if (path)
         snprintf(path, len, "%s%s", home, relevant_path); 
 
-    return path;
+    return (config_paths){dir, path};
 }
 
 static
@@ -231,21 +246,35 @@ void free_config(config_struct *cfg)
 
 int main(void)
 {
-    char *config_path = get_config_path();
+    config_paths cfg = get_config_path();
 
-    if (config_path == NULL) {
+    if (cfg.dir == NULL || cfg.path == NULL) {
         fprintf(stderr, "Failed to get config path!\n Exitting...");
         return EXIT_FAILURE;
     }
 
-    if (access(config_path, F_OK) != 0) {
-        FILE *fptr = fopen(config_path, "w+");
+    if (access(cfg.path, F_OK) != 0) {
+        if (access(cfg.dir, F_OK) != 0) {
+            int check = mkdir(cfg.dir, 0755);
+            if (check != 0) {
+                fprintf(stderr, "Unable to create config directory\n");
+                return EXIT_FAILURE;
+            }
+        }
+        FILE *fptr = fopen(cfg.path, "w+");
+        if (fptr == NULL) {
+            perror("fopen");
+            return EXIT_FAILURE;
+        }
         fprintf(fptr, "%s", file_read("./default/config.toml"));
-        printf("Wrote default config at %s\n", config_path);
+        printf("Wrote default config at %s\n", cfg.path);
         fclose(fptr);
     }
 
-    char *cat_config = file_read(config_path);
+    char *cat_config = file_read(cfg.path);
+
+    free(cfg.dir);
+    free(cfg.path);
 
     if (!cat_config) {
         fprintf(stderr, "Failed to read config!\n");
@@ -256,6 +285,7 @@ int main(void)
 
     if (config == NULL) {
         fprintf(stderr, "Failed to get config!\n");
+        return EXIT_FAILURE;
     }
 
     if (!config->font || !config->font[0].kvs.value) {
@@ -264,7 +294,8 @@ int main(void)
     }
 
     char *font_family = config->font[0].kvs.value;
-    int font_size = atoi(config->font[1].kvs.value);
+    char *font_endptr;
+    long font_size = strtol(config->font[1].kvs.value, &font_endptr, 10);
 
 
     if (!config->pallete || !config->pallete[0].kvs.value) {
