@@ -8,7 +8,7 @@
 #include "config.h"
 #include "macro_utils.h"
 
-static char CONFIG_PATH_SUFFIX[] = "/pretty/pretty.conf";
+static char CONFIG_PATH_SUFFIX[] = "/pretty/config.toml";
 
 enum type {
     V_STRING,
@@ -71,41 +71,43 @@ static struct cval CONFIG_VALIDATION[] = {
    { "palette", "color15", V_COLOR, CONFIG.color_palette[15] },
 };
 
+static
+ssize_t path_add(char *out, ssize_t len, char *suffix)
+{
+    size_t suffix_len = strlen(suffix);
+
+    if (len < 0)
+        return -1;
+    if ((len + suffix_len + 1) > PATH_MAX)
+        return -1;
+    memcpy(out + len, suffix, suffix_len + 1);
+    return len + suffix_len;
+}
+
 char *get_default_config_file(void)
 {
-    static char config_lookup[PATH_MAX];
+    static char lookup[PATH_MAX];
+    size_t len;
 
     const char *xdg_home = getenv("XDG_CONFIG_HOME");
     if (xdg_home != NULL) {
-        size_t len = strlen(xdg_home);
-
-        memcpy(config_lookup, xdg_home, len);
-        memcpy(config_lookup + len,
-            CONFIG_PATH_SUFFIX, length_of(CONFIG_PATH_SUFFIX));
-        if (access(config_lookup, F_OK) == 0)
-            return config_lookup;
+        len = strlen(xdg_home);
+        memcpy(lookup, xdg_home, len);
+        path_add(lookup, len, CONFIG_PATH_SUFFIX);
+        printf("Checking (XDG_CONFIG_HOME) [%s] for config\n", lookup);
+        if (access(lookup, F_OK) == 0)
+            return lookup;
     }
 
-    const char *xdg_dirs = getenv("XDG_CONFIG_DIRS");
-
-    if (xdg_dirs == NULL)
-        xdg_dirs = "/etc/xdg";
-
-    for (;;) {
-        size_t len = strcspn(xdg_dirs, ":");
-        if (len > (PATH_MAX - length_of(CONFIG_PATH_SUFFIX)))
-            continue;
-
-        memcpy(config_lookup, xdg_dirs, len);
-        memcpy(config_lookup + len,
-            CONFIG_PATH_SUFFIX, length_of(CONFIG_PATH_SUFFIX));
-        if (access(config_lookup, F_OK) == 0)
-            return config_lookup;
-
-        xdg_dirs += len;
-        if (*xdg_dirs == '\0')
-            break;
-        xdg_dirs++;
+    const char *home = getenv("HOME");
+    if (home != NULL) {
+        len = strlen(home);
+        memcpy(lookup, home, len);
+        len = path_add(lookup, len, "/.config");
+        path_add(lookup, len, CONFIG_PATH_SUFFIX);
+        printf("Checking (HOME) [%s] for config\n", lookup);
+        if (access(lookup, F_OK) == 0)
+            return lookup;
     }
 
     return NULL;
@@ -193,6 +195,9 @@ generic_config *return_config(char *cat_config)
 {
     // TODO: write a even better parser
     char const *section_name = "global";
+
+    if (cat_config == NULL)
+        cat_config = "";
 
     for (char *s = cat_config; *s != '\0'; s++) {
         if (*s == '[') {
