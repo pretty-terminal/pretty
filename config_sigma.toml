@@ -3,9 +3,23 @@ family = "JetBrains Mono Nerd Font"
 size = 12
 
 [window]
-opacity = 1
 padding = 12
 
 [palette]
-background = "1A1C31"
-foreground = "C1C9EC"
+background = "#1A1C31F2"
+color0 = "#0F0F1C"
+color1 = "#D22942"
+color2 = "#17B67C"
+color3 = "#F2A174"
+color4 = "#8C8AF1"
+color5 = "#D78AF1"
+color6 = "#8ADEF1"
+color7 = "#CAD3F5"
+color8 = "#A2B1E8"
+color9 = "#DE4259"
+color10 = "#3FD7A0"
+color11 = "#EED49F"
+color12 = "#A7A5FB"
+color13 = "#E5A5FB"
+color14 = "#A5EBFB"
+color15 = "#CAD3F5"

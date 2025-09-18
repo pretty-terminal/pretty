@@ -113,28 +113,27 @@ static bool render_frame(
     SDL_Renderer *renderer,
     struct dim win_size,
     const char *text,
-    const char *foreground,
     TTF_Font *font,
-    int screen_padding
+    generic_config *conf
 ) {
     SDL_RenderClear(renderer);
 
-    SDL_Color text_color = { HEX_TO_RGB(foreground), .a=255 };
+    SDL_Color text_color = { HEX_TO_RGB(conf->color_palette[15]), .a=255 };
 
     int advance;
     /* TODO: call it once for all */
     TTF_GetGlyphMetrics(font, 'M', NULL, NULL, NULL, NULL, &advance);
 
-    int x = screen_padding;
-    int y = screen_padding;
+    int x = conf->win_padding;
+    int y = conf->win_padding;
 
-    if ((2 * screen_padding + advance) >= win_size.width) {
+    if ((2 * conf->win_padding + advance) >= win_size.width) {
         /* We dont have room to render anything, so dont */
         SDL_RenderPresent(renderer);
         return true;
     }
 
-    size_t line_max_width = (win_size.width - (2 * screen_padding)) / advance;
+    size_t line_max_width = (win_size.width - (2 * conf->win_padding)) / advance;
     char const *p = text;
 
     for (; *p != '\0';) {
@@ -197,24 +196,6 @@ bool handle_event(SDL_Event *event, struct dim *win_size, bool *is_running)
     return false;
 }
 
-static
-void free_config(config_struct *cfg)
-{
-    for (int i = 0; i < (int)cfg->font->count; i++)
-        free(cfg->font[i].kvs.value);
-
-    for (int i = 0; i < (int)cfg->window->count; i++)
-        free(cfg->window[i].kvs.value);
-
-    for (int i = 0; i < (int)cfg->pallete->count; i++)
-        free(cfg->pallete[i].kvs.value);
-
-    free(cfg->font);
-    free(cfg->window);
-    free(cfg->pallete);
-    free(cfg);
-}
-
 static struct option LONG_OPTIONS[] = {
     {"config", required_argument, 0, 'c'},
     {0,        0,                 0,  0 }
@@ -257,31 +238,12 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    config_struct *config = return_config(cat_config);
+    generic_config *config = return_config(cat_config);
 
     if (config == NULL) {
         fprintf(stderr, "Failed to get config!\n");
         return EXIT_FAILURE;
     }
-
-    if (!config->font || !config->font[0].kvs.value) {
-        fprintf(stderr, "Font config missing!\n");
-        return EXIT_FAILURE;
-    }
-
-    char *font_family = config->font[0].kvs.value;
-    char *font_endptr;
-    long font_size = strtol(config->font[1].kvs.value, &font_endptr, 10);
-
-
-    if (!config->pallete || !config->pallete[0].kvs.value) {
-        fprintf(stderr, "Pallete config missing!\n");
-        return EXIT_FAILURE;
-    }
-
-    char *background = config->pallete[0].kvs.value;
-    char *foreground = config->pallete[1].kvs.value;
-    float opacity = strtof(config->window[0].kvs.value, NULL);
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
@@ -304,7 +266,8 @@ int main(int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
-    SDL_SetRenderDrawColor(renderer, HEX_TO_RGB(background), 255 * opacity);
+    SDL_SetRenderDrawColor(renderer,
+        HEX_TO_RGBA(config->color_palette[COLOR_BACKGROUND]));
 #ifdef WAIT_EVENTS
     SDL_SetWindowTitle(win, "Pretty");
 #endif
@@ -316,8 +279,8 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    char *font_path = find_font_path_from_fc_name(font_family);
-    TTF_Font *font = TTF_OpenFont(font_path, font_size);
+    char *font_path = find_font_path_from_fc_name(config->font_name);
+    TTF_Font *font = TTF_OpenFont(font_path, config->font_size);
 
     if (font == NULL) {
         fprintf(stderr, "Failed to load font: %s\n", SDL_GetError());
@@ -333,7 +296,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (!render_frame(renderer, win_size, buff, foreground, font, font_size))
+    if (!render_frame(renderer, win_size, buff, font, config))
         return false;
 
     for (bool is_running = true; is_running;) {
@@ -347,7 +310,7 @@ int main(int argc, char **argv)
 #else
         for (; SDL_PollEvent(&event); ) {
             if (handle_event(&event, &win_size, &is_running)) {
-                if (!render_frame(renderer, win_size, buff, foreground, font, font_size))
+                if (!render_frame(renderer, win_size, buff, font, config))
                     return false;
                 break;
             }
@@ -359,7 +322,6 @@ int main(int argc, char **argv)
     SDL_DestroyWindow(win);
     SDL_DestroyRenderer(renderer);
     SDL_Quit();
-    free_config(config);
-
+    free(cat_config);
     return EXIT_SUCCESS;
 }
