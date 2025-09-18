@@ -103,6 +103,12 @@ typedef struct {
     size_t length;
 } line_renderer;
 
+typedef struct {
+    TTF_Font *ttf;
+    int advance;
+    int line_skip;
+} font_info;
+
 /* Note: This does the job of TTF_RenderText_Blended_Wrapped,
  * without computing Wraplines and thus is faster.
  *
@@ -113,27 +119,23 @@ static bool render_frame(
     SDL_Renderer *renderer,
     struct dim win_size,
     const char *text,
-    TTF_Font *font,
+    font_info *font,
     generic_config *conf
 ) {
     SDL_RenderClear(renderer);
 
     SDL_Color text_color = { HEX_TO_RGB(conf->color_palette[15]), .a=255 };
 
-    int advance;
-    /* TODO: call it once for all */
-    TTF_GetGlyphMetrics(font, 'M', NULL, NULL, NULL, NULL, &advance);
-
     int x = conf->win_padding;
     int y = conf->win_padding;
 
-    if ((2 * conf->win_padding + advance) >= win_size.width) {
+    if ((2 * conf->win_padding + font->advance) >= win_size.width) {
         /* We dont have room to render anything, so dont */
         SDL_RenderPresent(renderer);
         return true;
     }
 
-    size_t line_max_width = (win_size.width - (2 * conf->win_padding)) / advance;
+    size_t line_max_width = (win_size.width - (2 * conf->win_padding)) / font->advance;
     char const *p = text;
 
     for (; *p != '\0';) {
@@ -150,7 +152,7 @@ static bool render_frame(
             goto skip_line;
 
         line.surface = TTF_RenderText_Blended(
-            font, text, line.length, text_color);
+            font->ttf, text, line.length, text_color);
         if (line.surface == NULL)
             return false;
 
@@ -165,7 +167,7 @@ static bool render_frame(
         SDL_DestroyTexture(line.texture);
 
 skip_line:
-        y += TTF_GetFontLineSkip(font);
+        y += font->line_skip;
         if (*p == '\n')
             p++;
         text = p;
@@ -203,6 +205,47 @@ static struct option LONG_OPTIONS[] = {
     {"config", required_argument, 0, 'c'},
     {0,        0,                 0,  0 }
 };
+
+static
+bool collect_font(char const *name, size_t size, font_info *font)
+{
+    if (!TTF_Init()) {
+        fprintf(stderr,
+            "SDL_ttf could not initialize! TTF_Error: %s\n", SDL_GetError());
+        return false;
+    }
+
+    printf("font name: [%s]\n", name);
+    char *font_path = find_font_path_from_fc_name(name);
+    printf("font path: [%s]\n", font_path);
+    font->ttf = TTF_OpenFont(font_path, size);
+
+    if (font == NULL) {
+        fprintf(stderr, "Failed to load font: %s\n", SDL_GetError());
+        return EXIT_FAILURE;
+    }
+
+    free(font_path);
+    TTF_SetFontHinting(font->ttf, TTF_HINTING_MONO);
+    font->line_skip = TTF_GetFontLineSkip(font->ttf);
+
+    TTF_GetGlyphMetrics(font->ttf, '~', NULL, NULL, NULL, NULL, &font->advance);
+
+    bool mono = true;
+    for (char c = ' '; c < '~'; c++) {
+        int advance;
+
+        TTF_GetGlyphMetrics(font->ttf, c, NULL, NULL, NULL, NULL, &advance);
+        mono &= advance == font->advance;
+        if (!mono)
+            break;
+    }
+
+    fprintf(stderr,
+        "\033[31mWarning! Your font is not monospace."
+        "This will cause rendering issues!\n\033[0m");
+    return true;
+}
 
 int main(int argc, char **argv)
 {
@@ -269,25 +312,9 @@ int main(int argc, char **argv)
     SDL_SetWindowTitle(win, "Pretty");
 #endif
 
-    if (!TTF_Init()) {
-        fprintf(stderr,
-            "SDL_ttf could not initialize! TTF_Error: %s\n", SDL_GetError());
-        SDL_Quit();
-        return EXIT_FAILURE;
-    }
-
-    printf("font name: [%s]\n", config->font_name);
-    char *font_path = find_font_path_from_fc_name(config->font_name);
-    printf("font path: [%s]\n", font_path);
-    TTF_Font *font = TTF_OpenFont(font_path, config->font_size);
-
-    if (font == NULL) {
-        fprintf(stderr, "Failed to load font: %s\n", SDL_GetError());
-        return EXIT_FAILURE;
-    }
-
-    free(font_path);
-    TTF_SetFontHinting(font, TTF_HINTING_MONO);
+    font_info font;
+    if (!collect_font(config->font_name, config->font_size, &font))
+        goto quit;
 
     char const *buff = file_read("flake.nix");
     if (buff == NULL) {
@@ -295,7 +322,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (!render_frame(renderer, win_size, buff, font, config))
+    if (!render_frame(renderer, win_size, buff, &font, config))
         return false;
 
     for (bool is_running = true; is_running;) {
@@ -309,7 +336,7 @@ int main(int argc, char **argv)
 #else
         for (; SDL_PollEvent(&event); ) {
             if (handle_event(&event, &win_size, &is_running)) {
-                if (!render_frame(renderer, win_size, buff, font, config))
+                if (!render_frame(renderer, win_size, buff, &font, config))
                     return false;
                 break;
             }
@@ -318,6 +345,7 @@ int main(int argc, char **argv)
 #endif
     }
 
+quit:
     SDL_DestroyWindow(win);
     SDL_DestroyRenderer(renderer);
     SDL_Quit();
