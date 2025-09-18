@@ -35,8 +35,8 @@
 #define SCREEN_HEIGHT 720
 
 struct dim {
-    int height;
     int width;
+    int height;
 };
 
 typedef struct {
@@ -146,6 +146,9 @@ static bool render_frame(
             p++;
         }
 
+        if (line.length == 0)
+            goto skip_line;
+
         line.surface = TTF_RenderText_Blended(
             font, text, line.length, text_color);
         if (line.surface == NULL)
@@ -155,13 +158,13 @@ static bool render_frame(
         if (line.texture == NULL)
             return false;
 
-        SDL_DestroySurface(line.surface);
-
         /* TODO: font size is known */
-        SDL_FRect dst = { x, y, line.length * advance, TTF_GetFontHeight(font) };
+        SDL_FRect dst = { x, y, line.texture->w, line.texture->h };
         SDL_RenderTexture(renderer, line.texture, NULL, &dst);
+        SDL_DestroySurface(line.surface);
         SDL_DestroyTexture(line.texture);
 
+skip_line:
         y += TTF_GetFontLineSkip(font);
         if (*p == '\n')
             p++;
@@ -232,12 +235,6 @@ int main(int argc, char **argv)
     printf("Loading config from [%s]\n", config_file);
     char *cat_config = file_read(config_file);
 
-    if (cat_config == NULL) {
-        // TODO: fallback to default config!
-        fprintf(stderr, "Failed to read config!\n");
-        return EXIT_FAILURE;
-    }
-
     generic_config *config = return_config(cat_config);
 
     if (config == NULL) {
@@ -279,7 +276,9 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    printf("font name: [%s]\n", config->font_name);
     char *font_path = find_font_path_from_fc_name(config->font_name);
+    printf("font path: [%s]\n", font_path);
     TTF_Font *font = TTF_OpenFont(font_path, config->font_size);
 
     if (font == NULL) {
@@ -295,8 +294,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to read the flake.nix file!\n");
         return EXIT_FAILURE;
     }
-
-    SDL_GetWindowSize(win, &win_size.width, &win_size.height);
 
     if (!render_frame(renderer, win_size, buff, font, config))
         return false;
