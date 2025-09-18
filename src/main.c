@@ -41,7 +41,6 @@ struct dim {
     int width;
 };
 
-
 typedef struct {
     char *dir;
     char *path;

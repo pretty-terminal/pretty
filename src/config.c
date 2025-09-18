@@ -14,6 +14,7 @@ config_section *parse_config(char *cat_config, char **keys, int num_keys)
 
     if (settings == NULL) {
         fprintf(stderr, "settings: Failed to allocate memory");
+        return NULL;
     }
 
     int i;
@@ -46,7 +47,7 @@ config_section *parse_config(char *cat_config, char **keys, int num_keys)
 
         settings[i].kvs.value = malloc(len + 1);
         if (settings[i].kvs.value) {
-            strncpy(settings[i].kvs.value, &cat_config[start], len);
+            memcpy(settings[i].kvs.value, &cat_config[start], len);
             settings[i].kvs.value[len] = '\0';
         }
     }
@@ -62,6 +63,7 @@ config_struct *return_config(char *cat_config)
     config_struct *config = malloc(sizeof(config_struct));
     if (config == NULL) {
         fprintf(stderr, "config: Failed to allocate memory");
+        return NULL;
     }
 
     char *font_keys[] = {"family", "size"};

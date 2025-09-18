@@ -20,5 +20,5 @@
 
     config_struct *return_config(char *cat_config);
 
-#endif // CONFIG_HO
+#endif // CONFIG_H
 
