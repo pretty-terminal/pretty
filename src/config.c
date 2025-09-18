@@ -119,11 +119,14 @@ char *parse_value(struct cval *p, char *s)
 
     switch (p->value) {
         case V_STRING:
+            if (*s != '\"')
+                fprintf(stderr, "Missing start quote!\n");
+            else s++;
             *(char **)p->target = s;
             s += strcspn(s, "\"\n");
             if (*s != '\"')
                 fprintf(stderr, "Unterminated string!\n");
-            else s++;
+            *s = '\0';
             break;
         case V_NUMBER:
             n = strtoul(s, &s, 10);
