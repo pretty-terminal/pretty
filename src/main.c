@@ -296,6 +296,8 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    SDL_GetWindowSize(win, &win_size.width, &win_size.height);
+
     if (!render_frame(renderer, win_size, buff, font, config))
         return false;
 
