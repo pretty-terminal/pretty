@@ -1,3 +1,4 @@
+#include <getopt.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -13,10 +14,9 @@
 #include <SDL3_ttf/SDL_ttf.h>
 #include <fontconfig/fontconfig.h>
 
+#include "config.h"
 #include "macro_utils.h"
 #include "pretty.h"
-#include "config.h"
-#include "sys/stat.h"
 
 #define HEX_TO_INT(h_ascii) ((h_ascii & 0xf) + (9 * ((h_ascii >> 6) & 1)))
 
@@ -33,8 +33,6 @@
 
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 720
-
-/* ^ TODO: dynamic configuration (see #1) */
 
 struct dim {
     int height;
@@ -200,32 +198,6 @@ bool handle_event(SDL_Event *event, struct dim *win_size, bool *is_running)
 }
 
 static
-config_paths get_config_path(void)
-{
-    const char *home = getenv("HOME");
-
-    if (home == NULL)
-        home = ".";
-
-    const char *relevant_dir = "/.config/pretty";
-    size_t rd_len = strlen(home) + strlen(relevant_dir) + 1;
-    char *dir = malloc(rd_len);
-
-    if (dir)
-        snprintf(dir, rd_len, "%s%s", home, relevant_dir); 
-
-    const char *relevant_path = "/.config/pretty/config.toml";
-
-    size_t len = strlen(home) + strlen(relevant_path) + 1;
-    char *path = malloc(len);
-
-    if (path)
-        snprintf(path, len, "%s%s", home, relevant_path); 
-
-    return (config_paths){dir, path};
-}
-
-static
 void free_config(config_struct *cfg)
 {
     for (int i = 0; i < (int)cfg->font->count; i++)
@@ -243,39 +215,44 @@ void free_config(config_struct *cfg)
     free(cfg);
 }
 
-int main(void)
+static struct option LONG_OPTIONS[] = {
+    {"config", required_argument, 0, 'c'},
+    {0,        0,                 0,  0 }
+};
+
+int main(int argc, char **argv)
 {
-    config_paths cfg = get_config_path();
+    char *config_file = NULL;
+    int option_index;
+    int c;
 
-    if (cfg.dir == NULL || cfg.path == NULL) {
-        fprintf(stderr, "Failed to get config path!\n Exitting...");
-        return EXIT_FAILURE;
+    while (true) {
+        c = getopt_long(argc, argv, ":c:", LONG_OPTIONS, &option_index);
+        if (c < 0)
+            break;
+        switch (c) {
+            case 'c':
+                config_file = optarg;
+                break;
+            case '?':
+                break;
+            default:
+                printf("?? getopt returned character code 0%o ??\n", c);
+        }
     }
 
-    if (access(cfg.path, F_OK) != 0) {
-        if (access(cfg.dir, F_OK) != 0) {
-            int check = mkdir(cfg.dir, 0755);
-            if (check != 0) {
-                fprintf(stderr, "Unable to create config directory\n");
-                return EXIT_FAILURE;
-            }
-        }
-        FILE *fptr = fopen(cfg.path, "w+");
-        if (fptr == NULL) {
-            perror("fopen");
-            return EXIT_FAILURE;
-        }
-        fprintf(fptr, "%s", file_read("./default/config.toml"));
-        printf("Wrote default config at %s\n", cfg.path);
-        fclose(fptr);
+    if (config_file == NULL)
+        config_file = get_default_config_file();
+    else if (access(config_file, F_OK) != 0) {
+        fprintf(stderr, "Provided config file [%s] does not exists\n", config_file);
+        config_file = get_default_config_file();
     }
 
-    char *cat_config = file_read(cfg.path);
+    printf("Loading config from [%s]\n", config_file);
+    char *cat_config = file_read(config_file);
 
-    free(cfg.dir);
-    free(cfg.path);
-
-    if (!cat_config) {
+    if (cat_config == NULL) {
+        // TODO: fallback to default config!
         fprintf(stderr, "Failed to read config!\n");
         return EXIT_FAILURE;
     }
