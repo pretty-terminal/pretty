@@ -1,9 +1,53 @@
-#include <string.h>
-#include <stdlib.h>
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 #include "config.h"
 #include "macro_utils.h"
+
+static char CONFIG_PATH_SUFFIX[] = "/pretty/pretty.conf";
+
+char *get_default_config_file(void)
+{
+    static char config_lookup[PATH_MAX];
+
+    const char *xdg_home = getenv("XDG_CONFIG_HOME");
+    if (xdg_home != NULL) {
+        size_t len = strlen(xdg_home);
+
+        memcpy(config_lookup, xdg_home, len);
+        memcpy(config_lookup + len,
+            CONFIG_PATH_SUFFIX, length_of(CONFIG_PATH_SUFFIX));
+        if (access(config_lookup, F_OK) == 0)
+            return config_lookup;
+    }
+
+    const char *xdg_dirs = getenv("XDG_CONFIG_DIRS");
+
+    if (xdg_dirs == NULL)
+        xdg_dirs = "/etc/xdg";
+
+    for (;;) {
+        size_t len = strcspn(xdg_dirs, ":");
+        if (len > (PATH_MAX - length_of(CONFIG_PATH_SUFFIX)))
+            continue;
+
+        memcpy(config_lookup, xdg_dirs, len);
+        memcpy(config_lookup + len,
+            CONFIG_PATH_SUFFIX, length_of(CONFIG_PATH_SUFFIX));
+        if (access(config_lookup, F_OK) == 0)
+            return config_lookup;
+
+        xdg_dirs += len;
+        if (*xdg_dirs == '\0')
+            break;
+        xdg_dirs++;
+    }
+
+    return NULL;
+}
 
 static
 config_section *parse_config(char *cat_config, char **keys, int num_keys)
