@@ -237,13 +237,13 @@ bool collect_font(char const *name, size_t size, font_info *font)
 
         TTF_GetGlyphMetrics(font->ttf, c, NULL, NULL, NULL, NULL, &advance);
         mono &= advance == font->advance;
-        if (!mono)
+        if (!mono) {
+            fprintf(stderr,
+                "\033[31mWarning! Your font is not monospace."
+                "This will cause rendering issues!\n\033[0m");
             break;
+        }
     }
-
-    fprintf(stderr,
-        "\033[31mWarning! Your font is not monospace."
-        "This will cause rendering issues!\n\033[0m");
     return true;
 }
 

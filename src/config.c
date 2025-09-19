@@ -171,7 +171,7 @@ char *parse_key_value(char const *section_name, char *s)
     *s++ = '\0';
     for (; isspace(*s); s++);
     if (*s != '=' && !seen) {
-        fprintf(stderr, "Missing assignment operator\n");
+        fprintf(stderr, "%s: Missing assignment operator\n", section_name);
         return s;
     }
     s++;
