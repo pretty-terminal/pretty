@@ -1,0 +1,25 @@
+[font]
+family = "Terminus"
+font_size = 12
+
+[window]
+padding = 12
+
+[palette]
+background = "000000FF"
+color0 = "000000FF"
+color1 = "AA0000FF"
+color2 = "00AA00FF"
+color3 = "AA5500FF"
+color4 = "0000AAFF"
+color5 = "AA00AAFF"
+color6 = "00AAAAFF"
+color7 = "AAAAAAFF"
+color8 = "555555FF"
+color9 = "FF5555FF"
+color10 = "55FF55FF"
+color11 = "FFFF55FF"
+color12 = "555555FF"
+color13 = "FF5555FF"
+color14 = "55FF55FF"
+color15 = "FFFFFFFF"

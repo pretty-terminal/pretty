@@ -24,7 +24,7 @@ struct cval {
 };
 
 static generic_config CONFIG = {
-    .font_name = "Jetbrains Mono Nerd Font",
+    .font_name = "Terminus",
     .font_size = 12,
     .win_padding = 12,
     .color_palette = {
