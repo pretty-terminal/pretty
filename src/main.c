@@ -330,7 +330,7 @@ int main(int argc, char **argv)
 #ifdef WAIT_EVENTS
         SDL_WaitEvent(&event);
         if (handle_event(&event, &win_size, &is_running)
-            && !render_frame(renderer, win_size, buff, font)
+            && !render_frame(renderer, win_size, buff, &font, config)
         )
             return false;
 #else
