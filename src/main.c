@@ -44,6 +44,19 @@ typedef struct {
     char *path;
 } config_paths;
 
+typedef struct {
+    SDL_Surface *surface;
+    SDL_Texture *texture;
+    size_t length;
+} line_renderer;
+
+typedef struct {
+    TTF_Font *ttf;
+    int advance;
+    int line_skip;
+} font_info;
+
+
 static
 void display_fps_metrics(SDL_Window *win)
 {
@@ -96,18 +109,6 @@ failure:
     FcPatternDestroy(matched);
     return out;
 }
-
-typedef struct {
-    SDL_Surface *surface;
-    SDL_Texture *texture;
-    size_t length;
-} line_renderer;
-
-typedef struct {
-    TTF_Font *ttf;
-    int advance;
-    int line_skip;
-} font_info;
 
 /* Note: This does the job of TTF_RenderText_Blended_Wrapped,
  * without computing Wraplines and thus is faster.
