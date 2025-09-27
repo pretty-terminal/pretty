@@ -17,6 +17,7 @@
 #include "config.h"
 #include "macro_utils.h"
 #include "pretty.h"
+#include "slave.h"
 
 #define HEX_TO_INT(h_ascii) ((h_ascii & 0xf) + (9 * ((h_ascii >> 6) & 1)))
 
@@ -56,6 +57,10 @@ typedef struct {
     int line_skip;
 } font_info;
 
+static char *shell = "/bin/sh";
+static char *opt_line = NULL;
+static char *opt_io = NULL;
+static char **opt_cmd = NULL;
 
 static
 void display_fps_metrics(SDL_Window *win)
@@ -285,6 +290,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to get config!\n");
         return EXIT_FAILURE;
     }
+
+    tty_new(opt_line, shell, opt_io, opt_cmd);
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
