@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
 #include <pty.h>
 #include <pwd.h>
 #include <signal.h>
@@ -12,7 +13,6 @@
 
 #include "pretty.h"
 #include "slave.h"
-#include "sys/ioctl.h"
 
 static pid_t pid;
 
@@ -102,3 +102,35 @@ int tty_new(char *args[static 1])
 
     return cmdfd;
 }
+
+bool tty_update(tty_state *tty)
+{
+    struct pollfd pfd = { .fd = tty->pty_master_fd, .events = POLL_IN };
+    int ret = poll(&pfd, 1, -1);
+
+    if (ret < 0)
+        return perror("poll"), false;
+
+    if (ret == 0)
+        return true;
+
+    if (pfd.revents & POLLIN) {
+        ssize_t n = read(tty->pty_master_fd, tty->buff, sizeof tty->buff);
+
+        if (n > 0) {
+            printf("Received %zd chars\n", n);
+            tty->buff_len = n;
+            tty->buff_changed = true;
+// v yeah ugh, we dont care :)
+// TODO: care?
+        } else if (n == 0 || errno == EIO)
+            return true;
+        else {
+            perror("read");
+            return true;
+        }
+    }
+
+    return true;
+}
+

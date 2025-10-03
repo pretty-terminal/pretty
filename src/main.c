@@ -287,12 +287,11 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    int cmdfd = tty_new((char *[]){ "cat", "flake.nix", NULL });
-    char buff[4096] = { 0 };
-    ssize_t n;
-
-    while ((n = read(cmdfd, buff, sizeof(buff))) > 0);
-    if (n < 0) perror("read");
+    tty_state tty = {
+        .pty_master_fd = tty_new((char *[]){ "python", "plop.py", NULL }),
+        .buff_len = 0,
+        .buff_changed = false
+    };
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
@@ -325,25 +324,32 @@ int main(int argc, char **argv)
     if (!collect_font(config->font_name, config->font_size, &font))
         goto quit;
 
-    if (!render_frame(renderer, win_size, buff, &font, config))
-        return false;
-
     for (bool is_running = true; is_running;) {
         SDL_Event event;
 #ifdef WAIT_EVENTS
         SDL_WaitEvent(&event);
         if (handle_event(&event, &win_size, &is_running)
-            && !render_frame(renderer, win_size, buff, &font, config)
+            && !render_frame(renderer, win_size, tty.buff, &font, config)
         )
             return false;
 #else
         for (; SDL_PollEvent(&event); ) {
             if (handle_event(&event, &win_size, &is_running)) {
-                if (!render_frame(renderer, win_size, buff, &font, config))
-                    return false;
+                if (!render_frame(renderer, win_size, tty.buff, &font, config)) {
+                    is_running = false;
+                    continue;
+                }
                 break;
             }
         }
+        if (!tty_update(&tty)) {
+            is_running = false;
+            continue;
+        }
+
+        if (tty.buff_changed)
+            render_frame(renderer, win_size, tty.buff, &font, config);
+
         display_fps_metrics(win);
 #endif
     }
