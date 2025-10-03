@@ -1,6 +1,9 @@
 #ifndef SLAVE_H
     #define SLAVE_H
 
+    #include <stdbool.h>
+    #include <stddef.h>
+
 enum term_mode {
 	MODE_WRAP        = 1 << 0,
 	MODE_INSERT      = 1 << 1,
@@ -11,6 +14,14 @@ enum term_mode {
 	MODE_UTF8        = 1 << 6,
 };
 
+typedef struct {
+    int pty_master_fd;
+    char buff[4096]; /* TODO: think about this */
+    size_t buff_len;
+    bool buff_changed;
+} tty_state;
+
 int tty_new(char *args[static 1]);
+bool tty_update(tty_state *tty);
 
 #endif // SLAVE_H
