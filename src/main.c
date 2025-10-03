@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <getopt.h>
 #include <limits.h>
 #include <stddef.h>
@@ -60,7 +61,7 @@ typedef struct {
 static char *shell = "/bin/sh";
 static char *opt_line = NULL;
 static char *opt_io = NULL;
-static char **opt_cmd = NULL;
+static char **opt_cmd = (char *[]){"cat", "flake.nix", NULL};
 
 static
 void display_fps_metrics(SDL_Window *win)
@@ -293,6 +294,20 @@ int main(int argc, char **argv)
 
     tty_new(opt_line, shell, opt_io, opt_cmd);
 
+    char buff[4096] = { 0 };
+
+    ssize_t n;
+    extern int cmdfd;
+
+    while ((n = read(cmdfd, buff, sizeof(buff))) > 0) {
+        if (write(STDOUT_FILENO, buff, n) < 0) {
+            perror("write");
+            break;
+        }
+    }
+
+    if (n < 0) perror("read");
+
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -323,12 +338,6 @@ int main(int argc, char **argv)
     font_info font;
     if (!collect_font(config->font_name, config->font_size, &font))
         goto quit;
-
-    char const *buff = file_read("flake.nix");
-    if (buff == NULL) {
-        fprintf(stderr, "Failed to read the flake.nix file!\n");
-        return EXIT_FAILURE;
-    }
 
     if (!render_frame(renderer, win_size, buff, &font, config))
         return false;

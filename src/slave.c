@@ -16,7 +16,7 @@
 #include "sys/ioctl.h"
 
 static int iofd = 1;
-static int cmdfd;
+int cmdfd;
 static pid_t pid;
 
 char *scroll;
@@ -38,7 +38,6 @@ sigchld(int a)
 		die("child exited with status %d\n", WEXITSTATUS(stat));
 	else if (WIFSIGNALED(stat))
 		die("child terminated due to signal %d\n", WTERMSIG(stat));
-	_exit(0);
 }
 
 static
@@ -138,6 +137,7 @@ int tty_new(const char *line, char *cmd, const char *output, char **args)
             close(slave);
 
         exec_sh(cmd, args);
+        fprintf(stderr, "Successfully executed SH\n");
         break;
     default:
         close(slave);

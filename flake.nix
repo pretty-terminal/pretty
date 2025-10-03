@@ -28,6 +28,7 @@
           compiledb
           valgrind
           kdePackages.kcachegrind
+          strace
         ];
       };
     });
