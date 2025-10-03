@@ -11,6 +11,6 @@ enum term_mode {
 	MODE_UTF8        = 1 << 6,
 };
 
-int tty_new(const char *line, char *cmd, const char *out, char **args);
+int tty_new(char *args[static 1]);
 
 #endif // SLAVE_H

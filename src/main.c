@@ -58,11 +58,6 @@ typedef struct {
     int line_skip;
 } font_info;
 
-static char *shell = "/bin/sh";
-static char *opt_line = NULL;
-static char *opt_io = NULL;
-static char **opt_cmd = (char *[]){"cat", "flake.nix", NULL};
-
 static
 void display_fps_metrics(SDL_Window *win)
 {
@@ -292,20 +287,11 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    tty_new(opt_line, shell, opt_io, opt_cmd);
-
+    int cmdfd = tty_new((char *[]){ "cat", "flake.nix", NULL });
     char buff[4096] = { 0 };
-
     ssize_t n;
-    extern int cmdfd;
 
-    while ((n = read(cmdfd, buff, sizeof(buff))) > 0) {
-        if (write(STDOUT_FILENO, buff, n) < 0) {
-            perror("write");
-            break;
-        }
-    }
-
+    while ((n = read(cmdfd, buff, sizeof(buff))) > 0);
     if (n < 0) perror("read");
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
