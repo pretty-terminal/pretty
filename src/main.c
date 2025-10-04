@@ -1,6 +1,6 @@
-#include <errno.h>
 #include <getopt.h>
 #include <limits.h>
+#include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -179,30 +179,6 @@ skip_line:
     return true;
 }
 
-static
-bool handle_event(SDL_Event *event, struct dim *win_size, bool *is_running)
-{
-    switch (event->type) {
-        case SDL_EVENT_QUIT:
-            *is_running = false;
-            break;
-
-        case SDL_EVENT_WINDOW_RESIZED:
-            win_size->width = event->window.data1;
-            win_size->height = event->window.data2;
-            SDL_Log("Window resized: %dx%d",
-                win_size->width, win_size->height);
-
-            /* fallthrough */
-        case SDL_EVENT_WINDOW_EXPOSED:
-            return true;
-
-        default:
-            break;
-    }
-    return false;
-}
-
 static struct option LONG_OPTIONS[] = {
     {"config", required_argument, 0, 'c'},
     {0,        0,                 0,  0 }
@@ -249,6 +225,13 @@ bool collect_font(char const *name, size_t size, font_info *font)
     return true;
 }
 
+void notify_ui_flush(void)
+{
+    static SDL_Event ev = { .type = SDL_EVENT_USER };
+
+    SDL_PushEvent(&ev);
+}
+
 int main(int argc, char **argv)
 {
     char *config_file = NULL;
@@ -287,11 +270,17 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    char buff[4096] = { 0 };
+    size_t buff_len;
+
     tty_state tty = {
         .pty_master_fd = tty_new((char *[]){ "python", "plop.py", NULL }),
         .buff_len = 0,
         .buff_changed = false
     };
+
+    if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0)
+        return EXIT_FAILURE;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
@@ -328,30 +317,47 @@ int main(int argc, char **argv)
         SDL_Event event;
 #ifdef WAIT_EVENTS
         SDL_WaitEvent(&event);
-        if (handle_event(&event, &win_size, &is_running)
-            && !render_frame(renderer, win_size, tty.buff, &font, config)
-        )
-            return false;
 #else
         for (; SDL_PollEvent(&event); ) {
-            if (handle_event(&event, &win_size, &is_running)) {
-                if (!render_frame(renderer, win_size, tty.buff, &font, config)) {
+#endif
+            switch (event.type) {
+                case SDL_EVENT_QUIT:
                     is_running = false;
-                    continue;
-                }
-                break;
-            }
-        }
-        if (!tty_update(&tty)) {
-            is_running = false;
-            continue;
-        }
+                    break;
 
+                case SDL_EVENT_WINDOW_RESIZED:
+                    win_size.width = event.window.data1;
+                    win_size.height = event.window.data2;
+                    SDL_Log("Window resized: %dx%d",
+                            win_size.width, win_size.height);
+                    goto render_frame;
+                    break;
+
+                case SDL_EVENT_WINDOW_EXPOSED:
+                    goto render_frame;
+                    break;
+
+                case SDL_EVENT_USER:
+                    memcpy(buff, tty.buff, tty.buff_len);
+                    buff_len = tty.buff_len;
+                    pthread_mutex_unlock(&tty.lock);
+render_frame:
+                    if (!render_frame(renderer, win_size, buff, &font, config)) {
+                        is_running = false;
+                        continue;
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+#ifndef WAIT_EVENTS
+        }
+#endif
         if (tty.buff_changed)
-            render_frame(renderer, win_size, tty.buff, &font, config);
+            render_frame(renderer, win_size, buff, &font, config);
 
         display_fps_metrics(win);
-#endif
     }
 
 quit:

@@ -134,3 +134,16 @@ bool tty_update(tty_state *tty)
     return true;
 }
 
+void *tty_poll_loop(void *arg)
+{
+    tty_state *tty = arg;
+
+    while (true) {
+        tty_update(tty);
+        if (tty->buff_changed) {
+            pthread_mutex_lock(&tty->lock);
+            notify_ui_flush();
+        }
+    }
+    __builtin_unreachable();
+}
