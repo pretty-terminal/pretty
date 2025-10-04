@@ -271,7 +271,6 @@ int main(int argc, char **argv)
     }
 
     char buff[4096] = { 0 };
-    size_t buff_len;
 
     tty_state tty = {
         .pty_master_fd = tty_new((char *[]){ "python", "tests/plop.py", NULL }),
@@ -339,7 +338,6 @@ int main(int argc, char **argv)
 
                 case SDL_EVENT_USER:
                     memcpy(buff, tty.buff, tty.buff_len);
-                    buff_len = tty.buff_len;
                     pthread_mutex_unlock(&tty.lock);
 render_frame:
                     if (!render_frame(renderer, win_size, buff, &font, config)) {
