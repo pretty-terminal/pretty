@@ -1,6 +1,7 @@
 #ifndef SLAVE_H
     #define SLAVE_H
 
+    #include <pthread.h>
     #include <stdbool.h>
     #include <stddef.h>
 
@@ -18,10 +19,14 @@ typedef struct {
     int pty_master_fd;
     char buff[4096]; /* TODO: think about this */
     size_t buff_len;
+    pthread_t thread;
+    pthread_mutex_t lock;
     bool buff_changed;
 } tty_state;
 
+void notify_ui_flush(void);
+
 int tty_new(char *args[static 1]);
-bool tty_update(tty_state *tty);
+void *tty_poll_loop(void *arg);
 
 #endif // SLAVE_H
