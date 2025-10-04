@@ -274,7 +274,7 @@ int main(int argc, char **argv)
     size_t buff_len;
 
     tty_state tty = {
-        .pty_master_fd = tty_new((char *[]){ "python", "plop.py", NULL }),
+        .pty_master_fd = tty_new((char *[]){ "python", "tests/plop.py", NULL }),
         .buff_len = 0,
         .buff_changed = false
     };
