@@ -36,6 +36,8 @@
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 720
 
+#define TEST_COMMAND "python tests/plop.py\r"
+
 struct dim {
     int width;
     int height;
@@ -270,12 +272,14 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    char buff[4096] = { 0 };
+    char buff[BUFSIZ] = { 0 };
+    size_t buff_pos = 0;
 
     tty_state tty = {
-        .pty_master_fd = tty_new((char *[]){ "python", "tests/plop.py", NULL }),
+        .pty_master_fd = tty_new((char *[]){ "/bin/sh", NULL }),
         .buff_len = 0,
-        .buff_changed = false
+        .buff_changed = false,
+        .lock = PTHREAD_MUTEX_INITIALIZER
     };
 
     if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0)
@@ -312,6 +316,8 @@ int main(int argc, char **argv)
     if (!collect_font(config->font_name, config->font_size, &font))
         goto quit;
 
+    tty_write(&tty, TEST_COMMAND, length_of(TEST_COMMAND));
+
     for (bool is_running = true; is_running;) {
         SDL_Event event;
 #ifdef WAIT_EVENTS
@@ -337,8 +343,17 @@ int main(int argc, char **argv)
                     break;
 
                 case SDL_EVENT_USER:
-                    memcpy(buff, tty.buff, tty.buff_len);
+                    pthread_mutex_lock(&tty.lock);
+                    if (buff_pos + tty.buff_len < sizeof(buff) - 1) {
+                        printf("Adding %zu bytes at position %zu\n", tty.buff_len, buff_pos);
+                        printf("First few chars: [%.20s]\n", tty.buff);
+                        memcpy(buff + buff_pos, tty.buff, tty.buff_len);
+                        buff_pos += tty.buff_len;
+                        buff[buff_pos] = '\0';
+                    }
+                    tty.buff_changed = false;
                     pthread_mutex_unlock(&tty.lock);
+                    goto render_frame;
 render_frame:
                     if (!render_frame(renderer, win_size, buff, &font, config)) {
                         is_running = false;
@@ -354,7 +369,6 @@ render_frame:
 #endif
         if (tty.buff_changed)
             render_frame(renderer, win_size, buff, &font, config);
-
         display_fps_metrics(win);
     }
 
