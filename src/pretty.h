@@ -18,5 +18,7 @@ void die(const char *errstr, ...)
 }
 
 char *file_read(char const *filepath);
+void notify_ui_flush(void);
+
 
 #endif

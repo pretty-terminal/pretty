@@ -25,8 +25,6 @@ typedef struct {
     bool buff_changed;
 } tty_state;
 
-void notify_ui_flush(void);
-
 int tty_new(char *args[static 1]);
 void *tty_poll_loop(void *arg);
 void tty_write(tty_state *tty, const char *s, size_t n);
