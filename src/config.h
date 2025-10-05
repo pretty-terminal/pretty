@@ -5,6 +5,11 @@
     #include <SDL3/SDL_pixels.h>
 
 typedef struct {
+    char *dir;
+    char *path;
+} config_paths;
+
+typedef struct {
     char *key;
     char *value;
 } config_pair;
