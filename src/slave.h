@@ -4,6 +4,7 @@
     #include <pthread.h>
     #include <stdbool.h>
     #include <stddef.h>
+    #include <stdio.h>
 
 enum term_mode {
 	MODE_WRAP        = 1 << 0,
@@ -17,7 +18,7 @@ enum term_mode {
 
 typedef struct {
     int pty_master_fd;
-    char buff[4096]; /* TODO: think about this */
+    char buff[BUFSIZ]; /* TODO: think about this */
     size_t buff_len;
     pthread_t thread;
     pthread_mutex_t lock;
@@ -28,5 +29,6 @@ void notify_ui_flush(void);
 
 int tty_new(char *args[static 1]);
 void *tty_poll_loop(void *arg);
+void tty_write(tty_state *tty, const char *s, size_t n);
 
 #endif // SLAVE_H

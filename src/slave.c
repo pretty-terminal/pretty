@@ -5,6 +5,7 @@
 #include <pty.h>
 #include <pwd.h>
 #include <signal.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,11 +14,12 @@
 
 #include "pretty.h"
 #include "slave.h"
+#include "macro_utils.h"
 
 static pid_t pid;
 
-void
-sigchld(int a)
+static
+void sigchld(int a)
 {
 	int stat;
 	pid_t p = waitpid(pid, &stat, WNOHANG);
@@ -103,6 +105,45 @@ int tty_new(char *args[static 1])
     return cmdfd;
 }
 
+static
+void tty_write_raw(tty_state *tty, const char *s, size_t n)
+{
+    ssize_t r;
+
+    while (n > 0) {
+        r = write(tty->pty_master_fd, s, n);
+
+        if (r < 0) {
+            if (errno == EINTR || errno == EAGAIN)
+                continue;
+            die("write error on tty: %s\n", strerror(errno));
+        }
+
+        n -= r;
+        s += r;
+    }
+}
+
+void tty_write(tty_state *tty, const char *s, size_t n)
+{
+    const char *next;
+
+	// This is similar to how the kernel handles ONLCR for ttys
+    while (n > 0) {
+        if (*s == '\r') {
+            next = s + 1;
+            tty_write_raw(tty, "\r\n", 2);
+        } else {
+            next = memchr(s, '\r', n);
+            default_value(next, s + n);
+            tty_write_raw(tty, s, next - s);
+        }
+        n -= next - s;
+        s = next;
+    }
+}
+
+static
 bool tty_update(tty_state *tty)
 {
     struct pollfd pfd = { .fd = tty->pty_master_fd, .events = POLL_IN };
@@ -141,7 +182,6 @@ void *tty_poll_loop(void *arg)
     while (true) {
         tty_update(tty);
         if (tty->buff_changed) {
-            pthread_mutex_lock(&tty->lock);
             notify_ui_flush();
         }
     }
