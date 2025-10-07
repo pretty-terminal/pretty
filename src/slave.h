@@ -20,6 +20,7 @@ typedef struct {
     int pty_master_fd;
     char buff[BUFSIZ]; /* TODO: think about this */
     size_t buff_len;
+    size_t buff_consumed; // how much has UI proccessed
     pthread_t thread;
     pthread_mutex_t lock;
     bool buff_changed;
