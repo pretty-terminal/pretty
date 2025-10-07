@@ -146,14 +146,20 @@ int main(int argc, char **argv)
 
                 case SDL_EVENT_USER:
                     pthread_mutex_lock(&tty.lock);
-                    if (buff_pos + tty.buff_len < sizeof(buff) - 1) {
-                        printf("Adding %zu bytes at position %zu\n", tty.buff_len, buff_pos);
-                        printf("First few chars: [%.20s]\n", tty.buff);
-                        memcpy(buff + buff_pos, tty.buff, tty.buff_len);
-                        buff_pos += tty.buff_len;
-                        buff[buff_pos] = '\0';
+                    if (tty.buff_consumed < tty.buff_len) {
+                        size_t new_bytes = tty.buff_len - tty.buff_consumed;
+                        fprintf(stderr, "Processing %zu new bytes (consumed: %zu, total: %zu)\n", 
+                           new_bytes, tty.buff_consumed, tty.buff_len);
+
+                        if (buff_pos + new_bytes < sizeof(buff) - 1) {
+                            memcpy(buff + buff_pos, tty.buff + tty.buff_consumed, new_bytes);
+                            buff_pos += new_bytes;
+                            buff[buff_pos] = '\0';
+                            fprintf(stderr, "Added %zu bytes at position %zu\n", new_bytes, buff_pos - new_bytes);
+                        }
+
+                        tty.buff_consumed = tty.buff_len;
                     }
-                    tty.buff_changed = false;
                     pthread_mutex_unlock(&tty.lock);
                     goto render_frame;
 render_frame:
@@ -169,8 +175,6 @@ render_frame:
 #ifndef WAIT_EVENTS
         }
 #endif
-        if (tty.buff_changed)
-            render_frame(renderer, win_size, buff, &font, config);
         display_fps_metrics(win);
     }
 
