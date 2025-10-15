@@ -23,7 +23,7 @@ Think of it as a terminal that’s not just functional — but **pretty**. 🌸
 
 ## 🌱 Origin
 
-The **PreTTY** project was initiated by [Gurjaka](https://github.com/Guramiko) and [Sigmanificient](https://github.com/sigmanificient),  
+The **PreTTY** project was initiated by [Gurjaka](https://github.com/Gurjaka) and [Sigmanificient](https://github.com/sigmanificient),  
 driven by a shared interest in understanding how terminal emulators — tools we both use daily — work at a low level.  
 
 Beyond being a practical utility, the project is also a learning endeavor:  
