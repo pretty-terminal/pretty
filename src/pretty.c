@@ -18,6 +18,7 @@
 #include "slave.h"
 #include "font.h"
 #include "renderer.h"
+#include "log.h"
 
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 720
@@ -53,24 +54,24 @@ int main(int argc, char **argv)
             case '?':
                 break;
             default:
-                printf("?? getopt returned character code 0%o ??\n", c);
+                pretty_log(PRETTY_INFO, "?? getopt returned character code 0%o ??", c);
         }
     }
 
     if (config_file == NULL)
         config_file = get_default_config_file();
     else if (access(config_file, F_OK) != 0) {
-        fprintf(stderr, "Provided config file [%s] does not exists\n", config_file);
+        pretty_log(PRETTY_ERROR, "Provided config file [%s] does not exists", config_file);
         config_file = get_default_config_file();
     }
 
-    printf("Loading config from [%s]\n", config_file);
+    pretty_log(PRETTY_INFO, "Loading config from [%s]", config_file);
     char *cat_config = file_read(config_file);
 
     generic_config *config = return_config(cat_config);
 
     if (config == NULL) {
-        fprintf(stderr, "Failed to get config!\n");
+        pretty_log(PRETTY_ERROR, "Failed to get config!");
         return EXIT_FAILURE;
     }
 
@@ -88,7 +89,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
-        SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
+        pretty_log(PRETTY_ERROR, "Couldn't initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
@@ -104,7 +105,7 @@ int main(int argc, char **argv)
             | SDL_WINDOW_TRANSPARENT,
         &win, &renderer)
     ) {
-        SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
+        pretty_log(PRETTY_ERROR, "Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
@@ -135,7 +136,7 @@ int main(int argc, char **argv)
                 case SDL_EVENT_WINDOW_RESIZED:
                     win_size.width = event.window.data1;
                     win_size.height = event.window.data2;
-                    SDL_Log("Window resized: %dx%d",
+                    pretty_log(PRETTY_INFO, "Window resized: %dx%d",
                             win_size.width, win_size.height);
                     goto render_frame;
                     break;
@@ -148,14 +149,14 @@ int main(int argc, char **argv)
                     pthread_mutex_lock(&tty.lock);
                     if (tty.buff_consumed < tty.buff_len) {
                         size_t new_bytes = tty.buff_len - tty.buff_consumed;
-                        fprintf(stderr, "Processing %zu new bytes (consumed: %zu, total: %zu)\n", 
+                        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)", 
                            new_bytes, tty.buff_consumed, tty.buff_len);
 
                         if (buff_pos + new_bytes < sizeof(buff) - 1) {
                             memcpy(buff + buff_pos, tty.buff + tty.buff_consumed, new_bytes);
                             buff_pos += new_bytes;
                             buff[buff_pos] = '\0';
-                            fprintf(stderr, "Added %zu bytes at position %zu\n", new_bytes, buff_pos - new_bytes);
+                            pretty_log(PRETTY_INFO, "Added %zu bytes at position %zu", new_bytes, buff_pos - new_bytes);
                         }
 
                         tty.buff_consumed = tty.buff_len;

@@ -7,6 +7,7 @@
 
 #include "config.h"
 #include "macro_utils.h"
+#include "log.h"
 
 static char CONFIG_PATH_SUFFIX[] = "/pretty/config.toml";
 
@@ -94,7 +95,7 @@ char *get_default_config_file(void)
         len = strlen(xdg_home);
         memcpy(lookup, xdg_home, len);
         path_add(lookup, len, CONFIG_PATH_SUFFIX);
-        printf("Checking (XDG_CONFIG_HOME) [%s] for config\n", lookup);
+        pretty_log(PRETTY_INFO, "Checking (XDG_CONFIG_HOME) [%s] for config", lookup);
         if (access(lookup, F_OK) == 0)
             return lookup;
     }
@@ -105,7 +106,7 @@ char *get_default_config_file(void)
         memcpy(lookup, home, len);
         len = path_add(lookup, len, "/.config");
         path_add(lookup, len, CONFIG_PATH_SUFFIX);
-        printf("Checking (HOME) [%s] for config\n", lookup);
+        pretty_log(PRETTY_INFO, "Checking (HOME) [%s] for config", lookup);
         if (access(lookup, F_OK) == 0)
             return lookup;
     }
@@ -120,18 +121,18 @@ char *parse_value(struct cval *p, char *s)
     switch (p->value) {
         case V_STRING:
             if (*s != '\"')
-                fprintf(stderr, "Missing start quote!\n");
+                pretty_log(PRETTY_ERROR, "Missing start quote!");
             else s++;
             *(char **)p->target = s;
             s += strcspn(s, "\"\n");
             if (*s != '\"')
-                fprintf(stderr, "Unterminated string!\n");
+                pretty_log(PRETTY_ERROR, "Unterminated string!");
             *s = '\0';
             break;
         case V_NUMBER:
             n = strtoul(s, &s, 10);
             if (n > UCHAR_MAX) {
-                fprintf(stderr, "Value for [%s].[%s] is not in range 0-255!\n",
+                pretty_log(PRETTY_ERROR, "Value for [%s].[%s] is not in range 0-255!",
                     p->section_name, p->key_name);
                 break;
             }
@@ -139,22 +140,22 @@ char *parse_value(struct cval *p, char *s)
             break;
         case V_COLOR:
             if (*s != '\"')
-                fprintf(stderr, "Missing start quote!\n");
+                pretty_log(PRETTY_ERROR, "Missing start quote!");
             else s++;
             if (*s == '#')
                 s++;
             n = 0;
             for (; isxdigit(s[n]); n++);
             if (n != 6 && n != 8) {
-                fprintf(stderr,
-                    "Color [%s].[%s] must be in rgb(a) hex format: %s\n",
+                pretty_log(PRETTY_ERROR,
+                    "Color [%s].[%s] must be in rgb(a) hex format: %s",
                     p->section_name, p->key_name, s);
                 break;
             }
             memcpy(p->target, s, n);
             s += n;
             if (*s != '\"')
-                fprintf(stderr, "Missing end quote!\n");
+                pretty_log(PRETTY_ERROR, "Missing end quote!");
             else s++;
             break;
     }
@@ -171,7 +172,7 @@ char *parse_key_value(char const *section_name, char *s)
     *s++ = '\0';
     for (; isspace(*s); s++);
     if (*s != '=' && !seen) {
-        fprintf(stderr, "%s: Missing assignment operator\n", section_name);
+        pretty_log(PRETTY_ERROR, "%s: Missing assignment operator", section_name);
         return s;
     }
     s++;
@@ -186,7 +187,7 @@ char *parse_key_value(char const *section_name, char *s)
         }
     }
     if (p == NULL) {
-        fprintf(stderr, "key [%s].[%s] is not a valid a setting\n",
+        pretty_log(PRETTY_ERROR, "key [%s].[%s] is not a valid a setting",
             section_name, key);
         return s;
     }
@@ -207,7 +208,7 @@ generic_config *return_config(char *cat_config)
             section_name = ++s;
             for (; isalpha(*s); s++);
             if (*s != ']')
-                fprintf(stderr, "Unterminated config section!\n");
+                pretty_log(PRETTY_ERROR, "Unterminated config section!");
             *s++ = '\0';
             goto skip;
         }
@@ -218,7 +219,7 @@ generic_config *return_config(char *cat_config)
         if (*s == '#')
             goto skip;
         if (*s != '\n')
-            fprintf(stderr, "<<%.10s>> Garbage at the end of the line", s);
+            pretty_log(PRETTY_ERROR, "<<%.10s>> Garbage at the end of the line", s);
 skip:
         s += strcspn(s, "\n");
     }
