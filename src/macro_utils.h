@@ -18,4 +18,6 @@
         HEX_TO_RGB(hex),     \
         (HEX_TO_INT(hex[6]) << 4) | HEX_TO_INT(hex[7])
 
+    #define UNUSED(x) ((void)(x))
+
 #endif

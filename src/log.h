@@ -3,7 +3,9 @@
 
 enum log_level {
     PRETTY_ERROR,
-    PRETTY_INFO
+    PRETTY_WARN,
+    PRETTY_INFO,
+    PRETTY_DEBUG
 };
 
 void pretty_log(enum log_level level, const char *text, ...)
