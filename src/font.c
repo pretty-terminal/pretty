@@ -4,6 +4,7 @@
 #include <fontconfig/fontconfig.h>
 
 #include "font.h"
+#include "log.h"
 
 char *find_font_path_from_fc_name(const char *font_name)
 {
@@ -22,12 +23,12 @@ char *find_font_path_from_fc_name(const char *font_name)
     FcChar8 *file = NULL;
 
     if (matched == NULL) {
-        fprintf(stderr, "Font not found: %s\n", font_name);
+        pretty_log(PRETTY_ERROR, "Font not found: %s", font_name);
         goto failure;
     }
 
     if (FcPatternGetString(matched, FC_FILE, 0, &file) != FcResultMatch) {
-        fprintf(stderr, "Failed to get font file path for: %s\n", font_name);
+        pretty_log(PRETTY_ERROR, "Failed to get font file path for: %s", font_name);
         goto failure;
     }
 
@@ -41,18 +42,18 @@ failure:
 bool collect_font(char const *name, size_t size, font_info *font)
 {
     if (!TTF_Init()) {
-        fprintf(stderr,
-            "SDL_ttf could not initialize! TTF_Error: %s\n", SDL_GetError());
+        pretty_log(PRETTY_ERROR,
+            "SDL_ttf could not initialize! TTF_Error: %s", SDL_GetError());
         return false;
     }
 
-    printf("font name: [%s]\n", name);
+    printf("font name: [%s]", name);
     char *font_path = find_font_path_from_fc_name(name);
-    printf("font path: [%s]\n", font_path);
+    printf("font path: [%s]", font_path);
     font->ttf = TTF_OpenFont(font_path, size);
 
     if (font == NULL) {
-        fprintf(stderr, "Failed to load font: %s\n", SDL_GetError());
+        pretty_log(PRETTY_ERROR, "Failed to load font: %s", SDL_GetError());
         return EXIT_FAILURE;
     }
 
@@ -69,9 +70,9 @@ bool collect_font(char const *name, size_t size, font_info *font)
         TTF_GetGlyphMetrics(font->ttf, c, NULL, NULL, NULL, NULL, &advance);
         mono &= advance == font->advance;
         if (!mono) {
-            fprintf(stderr,
+            pretty_log(PRETTY_ERROR,
                 "\033[31mWarning! Your font is not monospace."
-                "This will cause rendering issues!\n\033[0m");
+                "This will cause rendering issues!\033[0m");
             break;
         }
     }

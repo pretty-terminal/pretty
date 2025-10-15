@@ -16,6 +16,7 @@
 #include "slave.h"
 #include "macro_utils.h"
 #include "pthread.h"
+#include "log.h"
 
 static pid_t pid;
 
@@ -26,14 +27,14 @@ void sigchld(int a)
 	pid_t p = waitpid(pid, &stat, WNOHANG);
 
 	if (p < 0)
-		die("waiting for pid %hd failed: %s\n", pid, strerror(errno));
+		die("waiting for pid %hd failed: %s", pid, strerror(errno));
 	if (pid != p)
 		return;
 
 	if (WIFEXITED(stat) && WEXITSTATUS(stat))
-		die("child exited with status %d\n", WEXITSTATUS(stat));
+		die("child exited with status %d", WEXITSTATUS(stat));
 	else if (WIFSIGNALED(stat))
-		die("child terminated due to signal %d\n", WTERMSIG(stat));
+		die("child terminated due to signal %d", WTERMSIG(stat));
 }
 
 static
@@ -43,7 +44,7 @@ void exec_sh(char *args[static 1])
 
     errno = 0;
     if ((pw = getpwuid(getuid())) == NULL) {
-        die("getpwuid: %s\n", errno != 0 ? strerror(errno) : "unknown error");
+        die("getpwuid: %s", errno != 0 ? strerror(errno) : "unknown error");
     }
 
 	unsetenv("COLUMNS");
@@ -75,13 +76,13 @@ int tty_new(char *args[static 1])
     int slave;
 
     if (openpty(&master, &slave, NULL, NULL, NULL) < 0)
-        die("openpty call failed: %s\n", strerror(errno));
+        die("openpty call failed: %s", strerror(errno));
 
-    fprintf(stderr, "Successfully opened a new tty\n");
+    pretty_log(PRETTY_INFO, "Successfully opened a new tty");
 
     switch (pid = fork()) {
     case -1:
-        die("fork failed: %s\n", strerror(errno));
+        die("fork failed: %s", strerror(errno));
         break;
     case 0:
         setsid();
@@ -89,7 +90,7 @@ int tty_new(char *args[static 1])
         dup2(slave, STDOUT_FILENO);
         dup2(slave, STDERR_FILENO);
         if (ioctl(slave, TIOCSCTTY, NULL) < 0)
-            die("ioctl TIOCSTTY failed: %s\n", strerror(errno));
+            die("ioctl TIOCSTTY failed: %s", strerror(errno));
 
         if (slave > 2)
             close(slave);
@@ -117,7 +118,7 @@ void tty_write_raw(tty_state *tty, const char *s, size_t n)
         if (r < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
-            die("write error on tty: %s\n", strerror(errno));
+            die("write error on tty: %s", strerror(errno));
         }
 
         n -= r;
@@ -163,7 +164,7 @@ bool tty_update(tty_state *tty)
         if (n > 0) {
             pthread_mutex_lock(&tty->lock);
             if (tty->buff_len + n < sizeof(tty->buff)) {
-                fprintf(stderr, "Received %zd chars, appending to buffer (current len: %zu)\n", 
+                pretty_log(PRETTY_INFO, "Received %zd chars, appending to buffer (current len: %zu)", 
                     n, tty->buff_len);
 
                 memcpy(tty->buff + tty->buff_len, temp, n);
@@ -174,7 +175,7 @@ bool tty_update(tty_state *tty)
                     notify_ui_flush();
                 }
             } else {
-                fprintf(stderr, "WARNING: Buffer full, dropping %zd chars\n", n);
+                pretty_log(PRETTY_INFO, "WARNING: Buffer full, dropping %zd chars", n);
             }
 
             pthread_mutex_unlock(&tty->lock);
