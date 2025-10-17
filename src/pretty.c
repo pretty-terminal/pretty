@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <getopt.h>
 #include <limits.h>
 #include <pthread.h>
@@ -119,7 +120,7 @@ int main(int argc, char **argv)
     if (!collect_font(config->font_name, config->font_size, &font))
         goto quit;
 
-    tty_write(&tty, TEST_COMMAND, length_of(TEST_COMMAND));
+    // tty_write(&tty, TEST_COMMAND, length_of(TEST_COMMAND));
 
     for (bool is_running = true; is_running;) {
         SDL_Event event;
@@ -145,18 +146,41 @@ int main(int argc, char **argv)
                     goto render_frame;
                     break;
 
+                case SDL_EVENT_KEY_DOWN:
+                    if (event.key.key <= UCHAR_MAX && isprint(event.key.key))
+                        tty_write(&tty, (char *)&event.key.key, sizeof(char));
+                    else if (event.key.key == SDLK_RETURN)
+                        tty_write(&tty, "\r", length_of("\r"));
+                    else if (event.key.key == SDLK_BACKSPACE)
+                        tty_erase_last(&tty);
+                    else
+                        pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
+                    break;
+
                 case SDL_EVENT_USER:
                     pthread_mutex_lock(&tty.lock);
                     if (tty.buff_consumed < tty.buff_len) {
                         size_t new_bytes = tty.buff_len - tty.buff_consumed;
-                        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)", 
+                        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)",
                            new_bytes, tty.buff_consumed, tty.buff_len);
 
-                        if (buff_pos + new_bytes < sizeof(buff) - 1) {
-                            memcpy(buff + buff_pos, tty.buff + tty.buff_consumed, new_bytes);
-                            buff_pos += new_bytes;
-                            buff[buff_pos] = '\0';
-                            pretty_log(PRETTY_INFO, "Added %zu bytes at position %zu", new_bytes, buff_pos - new_bytes);
+                        for (size_t i = 0; i < new_bytes; i++) {
+                            char ch = tty.buff[tty.buff_consumed + i];
+
+                            if (ch == '\b' || ch == 0x7f) {
+                                if (buff_pos > 0) {
+                                    buff_pos--;
+                                    pretty_log(PRETTY_INFO, "Backspace: removed char at position %zu", buff_pos);
+                                    buff[buff_pos] = '\0';
+                                }
+                            } else {
+                                if (buff_pos < sizeof(buff) - 1) {
+                                    buff[buff_pos++] = ch;
+                                    buff[buff_pos] = '\0';
+                                    pretty_log(PRETTY_INFO, "Added char '%c' at position %zu",
+                                        (isprint(ch)) ? ch : '?', buff_pos - 1);
+                                }
+                            }
                         }
 
                         tty.buff_consumed = tty.buff_len;

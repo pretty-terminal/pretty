@@ -145,6 +145,11 @@ void tty_write(tty_state *tty, const char *s, size_t n)
     }
 }
 
+void tty_erase_last(tty_state *tty)
+{
+    tty_write_raw(tty, "\x7f", 1);
+}
+
 static
 bool tty_update(tty_state *tty)
 {
@@ -163,6 +168,7 @@ bool tty_update(tty_state *tty)
 
         if (n > 0) {
             pthread_mutex_lock(&tty->lock);
+
             if (tty->buff_len + n < sizeof(tty->buff)) {
                 pretty_log(PRETTY_INFO, "Received %zd chars, appending to buffer (current len: %zu)", 
                     n, tty->buff_len);
