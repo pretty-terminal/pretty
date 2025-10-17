@@ -13,6 +13,9 @@ CFLAGS += $(shell cat warning_flags.txt)
 CFLAGS += -O2
 CFLAGS += -iquote src
 CFLAGS += $(shell pkg-config --cflags $(LIBS))
+ifdef DEBUG
+CFLAGS += -DDEBUG_MODE
+endif
 
 LDLIBS += $(shell pkg-config --libs $(LIBS))
 
