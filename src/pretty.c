@@ -147,16 +147,14 @@ int main(int argc, char **argv)
                     break;
 
                 case SDL_EVENT_KEY_DOWN:
-                    pretty_log(PRETTY_DEBUG, "key: %d (%d)",
-                        event.key.key, isprint(event.key.key));
-                    if (isprint(event.key.key))
+                    if (event.key.key <= UCHAR_MAX && isprint(event.key.key))
                         tty_write(&tty, (char *)&event.key.key, sizeof(char));
                     else if (event.key.key == SDLK_RETURN)
                         tty_write(&tty, "\r", length_of("\r"));
                     else if (event.key.key == SDLK_BACKSPACE)
                         tty_erase_last(&tty);
                     else
-                        pretty_log(PRETTY_DEBUG, "idk key: %s", SDL_GetKeyName(event.key.key));
+                        pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
                     break;
 
                 case SDL_EVENT_USER:
