@@ -184,5 +184,8 @@ quit:
     SDL_DestroyRenderer(renderer);
     SDL_Quit();
     free(cat_config);
+
+    tty.should_exit = true;
+    pthread_join(tty.thread, NULL);
     return EXIT_SUCCESS;
 }
