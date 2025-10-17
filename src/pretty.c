@@ -172,12 +172,15 @@ int main(int argc, char **argv)
                             if (ch == '\b' || ch == 0x7f) {
                                 if (buff_pos > 0) {
                                     buff_pos--;
+                                    pretty_log(PRETTY_INFO, "Backspace: removed char at position %zu", buff_pos);
                                     buff[buff_pos] = '\0';
                                 }
                             } else {
                                 if (buff_pos < sizeof(buff) - 1) {
                                     buff[buff_pos++] = ch;
                                     buff[buff_pos] = '\0';
+                                    pretty_log(PRETTY_INFO, "Added char '%c' at position %zu",
+                                        (isprint(ch)) ? ch : '?', buff_pos - 1);
                                 }
                             }
                         }
