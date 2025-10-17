@@ -194,7 +194,7 @@ void *tty_poll_loop(void *arg)
 {
     tty_state *tty = arg;
 
-    while (true) {
+    while (!tty->should_exit) {
         tty_update(tty);
         pthread_mutex_lock(&tty->lock);
         if (tty->buff_changed && tty->buff_consumed < tty->buff_len) {
@@ -203,5 +203,5 @@ void *tty_poll_loop(void *arg)
         }
         pthread_mutex_unlock(&tty->lock);
     }
-    __builtin_unreachable();
+    return NULL;
 }

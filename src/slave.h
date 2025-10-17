@@ -24,6 +24,7 @@ typedef struct {
     pthread_t thread;
     pthread_mutex_t lock;
     bool buff_changed;
+    bool should_exit;
 } tty_state;
 
 int tty_new(char *args[static 1]);
