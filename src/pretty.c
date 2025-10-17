@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <getopt.h>
 #include <limits.h>
 #include <pthread.h>
@@ -145,11 +146,22 @@ int main(int argc, char **argv)
                     goto render_frame;
                     break;
 
+                case SDL_EVENT_KEY_DOWN:
+                    pretty_log(PRETTY_DEBUG, "key: %d (%d)",
+                        event.key.key, isprint(event.key.key));
+                    if (isprint(event.key.key))
+                        tty_write(&tty, (char *)&event.key.key, sizeof(char));
+                    else if (event.key.key == SDLK_RETURN)
+                        tty_write(&tty, "\r\n", length_of("\r\n"));
+                    else
+                        pretty_log(PRETTY_DEBUG, "idk key: %s", SDL_GetKeyName(event.key.key));
+                    break;
+
                 case SDL_EVENT_USER:
                     pthread_mutex_lock(&tty.lock);
                     if (tty.buff_consumed < tty.buff_len) {
                         size_t new_bytes = tty.buff_len - tty.buff_consumed;
-                        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)", 
+                        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)",
                            new_bytes, tty.buff_consumed, tty.buff_len);
 
                         if (buff_pos + new_bytes < sizeof(buff) - 1) {
