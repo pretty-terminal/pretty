@@ -187,6 +187,7 @@ int main(int argc, char **argv)
                     }
                     pthread_mutex_unlock(&tty.lock);
                     goto render_frame;
+
 render_frame:
                     if (!render_frame(renderer, win_size, buff, &font, config)) {
                         is_running = false;
