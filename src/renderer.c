@@ -1,5 +1,6 @@
 #include <stdio.h>
 
+#include "SDL3/SDL_render.h"
 #include "macro_utils.h"
 #include "renderer.h"
 
@@ -48,10 +49,19 @@ bool render_frame(
     }
 
     size_t line_max_width = (win_size.width - (2 * conf->win_padding)) / font->advance;
+    uint8_t line_max_count= (win_size.height - (2 * conf->win_padding)) / font->line_skip;
+    uint8_t line_count = 0;
     char const *p = text;
 
     for (; *p != '\0';) {
         line_renderer line = { 0 };
+
+        if (line_count == line_max_count) {
+            SDL_RenderClear(renderer);
+            x = conf->win_padding;
+            y = conf->win_padding;
+            line_count = 0;
+        }
 
         for (; *p != '\0' && *p != '\n';) {
             if (line.length == line_max_width)
@@ -83,6 +93,8 @@ skip_line:
         if (*p == '\n')
             p++;
         text = p;
+
+        line_count++;
     }
 
     SDL_RenderPresent(renderer);
