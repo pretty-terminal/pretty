@@ -38,6 +38,19 @@ void notify_ui_flush(void)
     SDL_PushEvent(&ev);
 }
 
+void thread_handle_quit(tty_state *tty)
+{
+    tty->should_exit = true;
+    pretty_log(PRETTY_DEBUG, "waiting for thread [%lu] to exit", tty->thread);
+
+    void *res;
+    int s = pthread_join(tty->thread, &res);
+    if (s != 0)
+        pretty_log(PRETTY_ERROR, "pthread_join failed");
+    else
+        pretty_log(PRETTY_DEBUG, "thread [%lu] exited cleanly", tty->thread);
+}
+
 int main(int argc, char **argv)
 {
     char *config_file = NULL;
@@ -205,12 +218,11 @@ render_frame:
     }
 
 quit:
+    thread_handle_quit(&tty);
     SDL_DestroyWindow(win);
     SDL_DestroyRenderer(renderer);
     SDL_Quit();
     free(cat_config);
 
-    tty.should_exit = true;
-    pthread_join(tty.thread, NULL);
     return EXIT_SUCCESS;
 }
