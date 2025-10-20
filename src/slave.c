@@ -154,7 +154,7 @@ static
 bool tty_update(tty_state *tty)
 {
     struct pollfd pfd = { .fd = tty->pty_master_fd, .events = POLL_IN };
-    int ret = poll(&pfd, 1, -1);
+    int ret = poll(&pfd, 1, 100);
 
     if (ret < 0)
         return perror("poll"), false;
