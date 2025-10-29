@@ -172,6 +172,9 @@ int main(int argc, char **argv)
 
                 case SDL_EVENT_USER:
                     pthread_mutex_lock(&tty.lock);
+                    if (tty.buff_len == 0 && tty.buff_consumed == 0)
+                        buff_pos = 0;
+
                     if (tty.buff_consumed < tty.buff_len) {
                         size_t new_bytes = tty.buff_len - tty.buff_consumed;
                         pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)",

@@ -181,7 +181,10 @@ bool tty_update(tty_state *tty)
                     notify_ui_flush();
                 }
             } else {
-                pretty_log(PRETTY_INFO, "WARNING: Buffer full, dropping %zd chars", n);
+                pretty_log(PRETTY_DEBUG, "WARNING: Buffer full, overwriting data");
+
+                tty->buff_len = 0;
+                tty->buff_consumed = 0;
             }
 
             pthread_mutex_unlock(&tty->lock);
