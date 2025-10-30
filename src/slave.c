@@ -169,22 +169,23 @@ bool tty_update(tty_state *tty)
         if (n > 0) {
             pthread_mutex_lock(&tty->lock);
 
-            if (tty->buff_len + n < sizeof(tty->buff)) {
-                pretty_log(PRETTY_INFO, "Received %zd chars, appending to buffer (current len: %zu)", 
-                    n, tty->buff_len);
-
-                memcpy(tty->buff + tty->buff_len, temp, n);
-                tty->buff_len += n;
-
-                if (!tty->buff_changed) {
-                    tty->buff_changed = true;
-                    notify_ui_flush();
-                }
-            } else {
+            if (tty->buff_len + n >= sizeof(tty->buff)) {
                 pretty_log(PRETTY_DEBUG, "WARNING: Buffer full, overwriting data");
 
                 tty->buff_len = 0;
                 tty->buff_consumed = 0;
+                tty->overflowed = true;
+            }
+
+            pretty_log(PRETTY_INFO, "Received %zd chars, appending to buffer (current len: %zu)", 
+                n, tty->buff_len);
+
+            memcpy(tty->buff + tty->buff_len, temp, n);
+            tty->buff_len += n;
+
+            if (!tty->buff_changed) {
+                tty->buff_changed = true;
+                notify_ui_flush();
             }
 
             pthread_mutex_unlock(&tty->lock);
