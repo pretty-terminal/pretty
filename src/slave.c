@@ -151,6 +151,49 @@ void tty_erase_last(tty_state *tty)
 }
 
 static
+inline size_t ring_count(const tty_state *tty)
+{
+    return (tty->head >= tty->tail)
+        ? (tty->head - tty->tail)
+        : (TTY_RING_CAP - (tty->tail - tty->head));
+}
+
+static
+inline size_t ring_space(const tty_state *tty)
+{
+    return TTY_RING_CAP - 1 - ring_count(tty);
+}
+
+static
+size_t ring_write(tty_state *tty, const char *src, size_t nbytes)
+{
+    size_t space = ring_space(tty);
+
+    if (nbytes > space) {
+        if (!tty->overwrite_oldest)
+            nbytes = space; // drop excess
+        else {
+            // advance tail to free necessary bytes
+            size_t fneed = nbytes - space;
+            tty->tail = (tty->tail + fneed) % TTY_RING_CAP;
+        };
+    }
+
+    // split copy across end if needed
+    size_t first = nbytes;
+    size_t end_space = TTY_RING_CAP - tty->head;
+
+    if (first > end_space)
+        first = end_space;
+
+    memcpy(tty->buff + tty->head, src, first);
+    memcpy(tty->buff, src + first, nbytes - first);
+
+    tty->head = (tty->head + nbytes) % TTY_RING_CAP;
+    return nbytes;
+}
+
+static
 bool tty_update(tty_state *tty)
 {
     struct pollfd pfd = { .fd = tty->pty_master_fd, .events = POLL_IN };
@@ -163,25 +206,23 @@ bool tty_update(tty_state *tty)
         return true;
 
     if (pfd.revents & POLLIN) {
-        char temp[BUFSIZ];
+        char temp[TTY_RING_CAP];
         ssize_t n = read(tty->pty_master_fd, temp, sizeof temp);
 
         if (n > 0) {
             pthread_mutex_lock(&tty->lock);
 
-            if (tty->buff_len + n >= sizeof(tty->buff)) {
-                pretty_log(PRETTY_DEBUG, "WARNING: Buffer full, overwriting data");
+            size_t wrote = ring_write(tty, temp, (size_t)n);
 
-                tty->buff_len = 0;
-                tty->buff_consumed = 0;
-                tty->overflowed = true;
+            if (wrote < (size_t)n && !tty->overwrite_oldest) {
+                pretty_log(PRETTY_DEBUG,
+                           "Ring full: dropped %zu bytes (kept %zu)",
+                           (size_t)n - wrote, wrote);
+            } else if (wrote < (size_t)n) {
+                pretty_log(PRETTY_DEBUG,
+                           "Ring overwrite: replaced %zu oldest bytes",
+                           (size_t)n - wrote);
             }
-
-            pretty_log(PRETTY_INFO, "Received %zd chars, appending to buffer (current len: %zu)", 
-                n, tty->buff_len);
-
-            memcpy(tty->buff + tty->buff_len, temp, n);
-            tty->buff_len += n;
 
             if (!tty->buff_changed) {
                 tty->buff_changed = true;
@@ -207,11 +248,39 @@ void *tty_poll_loop(void *arg)
     while (!tty->should_exit) {
         tty_update(tty);
         pthread_mutex_lock(&tty->lock);
-        if (tty->buff_changed && tty->buff_consumed < tty->buff_len) {
+        if (tty->buff_changed && tty->tail < tty->head) {
             notify_ui_flush();
             tty->buff_changed = false;
         }
         pthread_mutex_unlock(&tty->lock);
     }
     return NULL;
+}
+
+
+size_t ring_read_span(const tty_state *tty, const char **ptr)
+{
+    size_t cont = ring_count(tty);
+
+    if (!cont) {
+        *ptr = NULL;
+        return 0;
+    }
+
+    size_t end_contig = (tty->head >= tty->tail)
+        ? (tty->head - tty->tail)
+        : (TTY_RING_CAP - tty->tail);
+
+    *ptr = tty->buff + tty->tail;
+    return end_contig;
+}
+
+void ring_consume(tty_state *tty, size_t k)
+{
+    size_t cont = ring_count(tty);
+
+    if (k > cont)
+        k = cont;
+
+    tty->tail = (tty->tail + k) % TTY_RING_CAP;
 }
