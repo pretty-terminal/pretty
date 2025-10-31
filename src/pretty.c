@@ -89,14 +89,14 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    char buff[BUFSIZ] = { 0 };
+    char buff[TTY_RING_CAP] = { 0 };
     size_t buff_pos = 0;
 
     tty_state tty = {
         .pty_master_fd = tty_new((char *[]){ "/bin/sh", NULL }),
-        .buff_len = 0,
         .buff_changed = false,
-        .lock = PTHREAD_MUTEX_INITIALIZER
+        .lock = PTHREAD_MUTEX_INITIALIZER,
+        .overwrite_oldest = true,
     };
 
     if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0)
@@ -172,18 +172,16 @@ int main(int argc, char **argv)
 
                 case SDL_EVENT_USER:
                     pthread_mutex_lock(&tty.lock);
-                    if (tty.overflowed) {
-                        buff_pos = 0;
-                        tty.overflowed = false;
-                    }
 
-                    if (tty.buff_consumed < tty.buff_len) {
-                        size_t new_bytes = tty.buff_len - tty.buff_consumed;
+                    const char *p;
+                    size_t new_bytes = ring_read_span(&tty, &p);
+
+                    if (new_bytes) {
                         pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)",
-                           new_bytes, tty.buff_consumed, tty.buff_len);
+                           new_bytes, tty.tail, tty.head);
 
                         for (size_t i = 0; i < new_bytes; i++) {
-                            char ch = tty.buff[tty.buff_consumed + i];
+                            char ch = tty.buff[tty.tail + i];
 
                             if (ch == '\b' || ch == 0x7f) {
                                 if (buff_pos > 0) {
@@ -199,9 +197,13 @@ int main(int argc, char **argv)
                                         (isprint(ch)) ? ch : '?', buff_pos - 1);
                                 }
                             }
-                        }
 
-                        tty.buff_consumed = tty.buff_len;
+                            if (buff_pos >= sizeof(buff) - 1) {
+                                pretty_log(PRETTY_WARN, "buff_pos overflow, resseting");
+                                buff_pos = 0;
+                            }
+                        }
+                        ring_consume(&tty, new_bytes);
                     }
                     pthread_mutex_unlock(&tty.lock);
                     goto render_frame;
