@@ -89,14 +89,14 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    char buff[BUFSIZ] = { 0 };
+    char buff[TTY_RING_CAP] = { 0 };
     size_t buff_pos = 0;
 
     tty_state tty = {
         .pty_master_fd = tty_new((char *[]){ "/bin/sh", NULL }),
-        .buff_len = 0,
         .buff_changed = false,
-        .lock = PTHREAD_MUTEX_INITIALIZER
+        .lock = PTHREAD_MUTEX_INITIALIZER,
+        .overwrite_oldest = true,
     };
 
     if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0)
@@ -170,39 +170,25 @@ int main(int argc, char **argv)
                         pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
                     break;
 
+
+                case SDL_EVENT_MOUSE_WHEEL:
+                    if (event.wheel.y > 0)
+                        calculate_scroll(&tty, SCROLL_UP);
+                    else if (event.wheel.y < 0)
+                        calculate_scroll(&tty, SCROLL_DOWN);
+
+                    scroll(&tty, buff, sizeof(buff), &buff_pos);
+                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
+                    goto render_frame;
+                    break;
+
                 case SDL_EVENT_USER:
-                    pthread_mutex_lock(&tty.lock);
-                    if (tty.buff_consumed < tty.buff_len) {
-                        size_t new_bytes = tty.buff_len - tty.buff_consumed;
-                        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)",
-                           new_bytes, tty.buff_consumed, tty.buff_len);
-
-                        for (size_t i = 0; i < new_bytes; i++) {
-                            char ch = tty.buff[tty.buff_consumed + i];
-
-                            if (ch == '\b' || ch == 0x7f) {
-                                if (buff_pos > 0) {
-                                    buff_pos--;
-                                    pretty_log(PRETTY_INFO, "Backspace: removed char at position %zu", buff_pos);
-                                    buff[buff_pos] = '\0';
-                                }
-                            } else {
-                                if (buff_pos < sizeof(buff) - 1) {
-                                    buff[buff_pos++] = ch;
-                                    buff[buff_pos] = '\0';
-                                    pretty_log(PRETTY_INFO, "Added char '%c' at position %zu",
-                                        (isprint(ch)) ? ch : '?', buff_pos - 1);
-                                }
-                            }
-                        }
-
-                        tty.buff_consumed = tty.buff_len;
-                    }
-                    pthread_mutex_unlock(&tty.lock);
+                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
                     goto render_frame;
 
 render_frame:
-                    if (!render_frame(renderer, win_size, buff, &font, config)) {
+                    if (!render_frame(renderer, win_size, &tty, buff,
+                                sizeof(buff), &buff_pos, &font, config)) {
                         is_running = false;
                         continue;
                     }
