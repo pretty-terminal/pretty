@@ -38,7 +38,10 @@ void display_fps_metrics(SDL_Window *win);
 bool render_frame(
     SDL_Renderer *renderer,
     struct dim win_size,
-    const char *text,
+    tty_state *tty,
+    char *text,
+    size_t buff_size,
+    size_t *buff_pos,
     font_info *font,
     generic_config *conf
 );
@@ -46,9 +49,15 @@ void read_to_buff(
     tty_state *tty,
     char *buff,
     size_t buff_size,
-    size_t *buff_pos,
-    bool scroll
+    size_t *buff_pos
 );
-void scroll(SDL_Renderer *renderer, tty_state *tty, enum event scroll);
+
+void calculate_scroll(tty_state *tty, enum event dir);
+void scroll(
+    tty_state *tty,
+    char *buff,
+    size_t buff_size,
+    size_t *buff_pos
+);
 
 #endif // RENDERER_H
