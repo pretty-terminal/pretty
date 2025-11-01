@@ -1,8 +1,11 @@
 #include <stdio.h>
+#include <ctype.h>
 
 #include "SDL3/SDL_render.h"
 #include "macro_utils.h"
 #include "renderer.h"
+#include "log.h"
+#include "slave.h"
 
 void display_fps_metrics(SDL_Window *win)
 {
@@ -49,19 +52,19 @@ bool render_frame(
     }
 
     size_t line_max_width = (win_size.width - (2 * conf->win_padding)) / font->advance;
-    uint8_t line_max_count= (win_size.height - (2 * conf->win_padding)) / font->line_skip;
+    // uint8_t line_max_count= (win_size.height - (2 * conf->win_padding)) / font->line_skip;
     uint8_t line_count = 0;
     char const *p = text;
 
     for (; *p != '\0';) {
         line_renderer line = { 0 };
 
-        if (line_count == line_max_count) {
-            SDL_RenderClear(renderer);
-            x = conf->win_padding;
-            y = conf->win_padding;
-            line_count = 0;
-        }
+        // if (line_count == line_max_count) {
+        //     SDL_RenderClear(renderer);
+        //     x = conf->win_padding;
+        //     y = conf->win_padding;
+        //     line_count = 0;
+        // }
 
         for (; *p != '\0' && *p != '\n';) {
             if (line.length == line_max_width)
@@ -99,4 +102,104 @@ skip_line:
 
     SDL_RenderPresent(renderer);
     return true;
+}
+
+void scroll(SDL_Renderer *renderer, tty_state *tty, enum event dir)
+{
+    pthread_mutex_lock(&tty->lock);
+    uint8_t nlines = 0;
+
+    switch (dir) {
+    case SCROLL_UP:
+        while (nlines < 2 && tty->scroll_tail != 0) {
+            tty->scroll_tail = (tty->scroll_tail + TTY_RING_CAP - 1) % TTY_RING_CAP;
+            if (tty->buff[tty->scroll_tail] == '\n')
+                nlines++;
+        }
+        break;
+
+    case SCROLL_DOWN: {
+        size_t nline_end = tty->head;
+        for (; tty->buff[nline_end] != '\n' && nline_end != 0; nline_end--);
+
+        while (nlines < 1 && tty->scroll_tail != nline_end + 1) {
+            if (tty->buff[tty->scroll_tail] == '\n')
+                nlines++;
+            tty->scroll_tail = (tty->scroll_tail + 1) % TTY_RING_CAP;
+        }
+        break;
+    }
+
+    default:
+        pthread_mutex_unlock(&tty->lock);
+        pretty_log(PRETTY_ERROR, "unhandled scroll event %d", dir);
+        return;
+    }
+
+    pretty_log(PRETTY_DEBUG, "scroll: dir=%d, tail=%zu head=%zu", dir, tty->scroll_tail, tty->head);
+    pthread_mutex_unlock(&tty->lock);
+}
+
+void read_to_buff(
+    tty_state *tty,
+    char *buff,
+    size_t buff_size,
+    size_t *buff_pos,
+    bool scroll
+) {
+    pthread_mutex_lock(&tty->lock);
+
+    if (scroll) {
+        pretty_log(PRETTY_INFO, "Scrolling to %zu", tty->scroll_tail);
+        size_t pos = tty->scroll_tail;
+        size_t visible = (tty->head >= pos)
+            ? (tty->head - pos)
+            : (TTY_RING_CAP - (pos - tty->head));
+
+        size_t limit = (visible < buff_size - 1) ? visible : buff_size - 1;
+        for (size_t i = 0; i < limit; i++) {
+            buff[i] = tty->buff[pos];
+            pos = (pos + 1) % TTY_RING_CAP;
+        }
+
+        buff[limit] = '\0';
+        *buff_pos = limit;
+
+        pthread_mutex_unlock(&tty->lock);
+        return;
+    }
+
+    const char *p;
+    size_t new_bytes = ring_read_span(tty, &p);
+
+    if (new_bytes) {
+        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)",
+           new_bytes, tty->tail, tty->head);
+
+        for (size_t i = 0; i < new_bytes; i++) {
+            char ch = p[i];
+
+            if (ch == '\b' || ch == 0x7f) {
+                if (*buff_pos > 0) {
+                    (*buff_pos)--;
+                    pretty_log(PRETTY_INFO, "Backspace: removed char at position %zu", *buff_pos);
+                    buff[*buff_pos] = '\0';
+                }
+            } else {
+                if (*buff_pos < buff_size - 1) {
+                    buff[(*buff_pos)++] = ch;
+                    buff[*buff_pos] = '\0';
+                    pretty_log(PRETTY_INFO, "Added char '%c' at position %zu",
+                        (isprint(ch)) ? ch : '?', *buff_pos - 1);
+                }
+            }
+
+            if (*buff_pos >= buff_size - 1) {
+                pretty_log(PRETTY_WARN, "buff_pos overflow, resseting");
+                *buff_pos = 0;
+            }
+        }
+        ring_consume(tty, new_bytes);
+    }
+    pthread_mutex_unlock(&tty->lock);
 }

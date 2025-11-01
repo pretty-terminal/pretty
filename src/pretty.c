@@ -170,42 +170,19 @@ int main(int argc, char **argv)
                         pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
                     break;
 
+
+                case SDL_EVENT_MOUSE_WHEEL:
+                    if (event.wheel.y > 0)
+                        scroll(renderer, &tty, SCROLL_UP);
+                    else if (event.wheel.y < 0)
+                        scroll(renderer, &tty, SCROLL_DOWN);
+
+                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos, true);
+                    goto render_frame;
+                    break;
+
                 case SDL_EVENT_USER:
-                    pthread_mutex_lock(&tty.lock);
-
-                    const char *p;
-                    size_t new_bytes = ring_read_span(&tty, &p);
-
-                    if (new_bytes) {
-                        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)",
-                           new_bytes, tty.tail, tty.head);
-
-                        for (size_t i = 0; i < new_bytes; i++) {
-                            char ch = tty.buff[tty.tail + i];
-
-                            if (ch == '\b' || ch == 0x7f) {
-                                if (buff_pos > 0) {
-                                    buff_pos--;
-                                    pretty_log(PRETTY_INFO, "Backspace: removed char at position %zu", buff_pos);
-                                    buff[buff_pos] = '\0';
-                                }
-                            } else {
-                                if (buff_pos < sizeof(buff) - 1) {
-                                    buff[buff_pos++] = ch;
-                                    buff[buff_pos] = '\0';
-                                    pretty_log(PRETTY_INFO, "Added char '%c' at position %zu",
-                                        (isprint(ch)) ? ch : '?', buff_pos - 1);
-                                }
-                            }
-
-                            if (buff_pos >= sizeof(buff) - 1) {
-                                pretty_log(PRETTY_WARN, "buff_pos overflow, resseting");
-                                buff_pos = 0;
-                            }
-                        }
-                        ring_consume(&tty, new_bytes);
-                    }
-                    pthread_mutex_unlock(&tty.lock);
+                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos, false);
                     goto render_frame;
 
 render_frame:

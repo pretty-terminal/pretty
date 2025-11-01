@@ -134,7 +134,7 @@ void tty_write(tty_state *tty, const char *s, size_t n)
     while (n > 0) {
         if (*s == '\r') {
             next = s + 1;
-            tty_write_raw(tty, "\r", 2);
+            tty_write_raw(tty, "\r", 1);
         } else {
             next = memchr(s, '\r', n);
             default_value(next, s + n);
