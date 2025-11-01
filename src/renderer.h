@@ -7,9 +7,20 @@
     #include "config.h"
     #include "slave.h"
 
+
+#define FOREACH_EVENT(EVENT) \
+        EVENT(SCROLL_UP)   \
+        EVENT(SCROLL_DOWN)  \
+
+#define GENERATE_ENUM(ENUM) ENUM,
+#define GENERATE_STRING(STRING) #STRING,
+
 enum event {
-    SCROLL_UP,
-    SCROLL_DOWN
+    FOREACH_EVENT(GENERATE_ENUM)
+};
+
+static const char *event_name[] = {
+    FOREACH_EVENT(GENERATE_STRING)
 };
 
 typedef struct {
