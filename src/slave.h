@@ -24,6 +24,7 @@ typedef struct {
     char buff[TTY_RING_CAP]; /* TODO: think about this */
     size_t head;
     size_t tail;
+    size_t scroll_tail;
 
     pthread_t thread;
     pthread_mutex_t lock;

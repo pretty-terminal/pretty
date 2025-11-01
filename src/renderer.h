@@ -5,6 +5,12 @@
 
     #include "font.h"
     #include "config.h"
+    #include "slave.h"
+
+enum event {
+    SCROLL_UP,
+    SCROLL_DOWN
+};
 
 typedef struct {
     SDL_Surface *surface;
@@ -25,5 +31,13 @@ bool render_frame(
     font_info *font,
     generic_config *conf
 );
+void read_to_buff(
+    tty_state *tty,
+    char *buff,
+    size_t buff_size,
+    size_t *buff_pos,
+    bool scroll
+);
+void scroll(SDL_Renderer *renderer, tty_state *tty, enum event scroll);
 
 #endif // RENDERER_H
