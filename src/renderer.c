@@ -5,6 +5,7 @@
 #include "macro_utils.h"
 #include "renderer.h"
 #include "log.h"
+#include "pthread.h"
 #include "slave.h"
 
 void display_fps_metrics(SDL_Window *win)
@@ -34,7 +35,10 @@ void display_fps_metrics(SDL_Window *win)
 bool render_frame(
     SDL_Renderer *renderer,
     struct dim win_size,
-    const char *text,
+    tty_state *tty,
+    char *text,
+    size_t buff_size,
+    size_t *buff_pos,
     font_info *font,
     generic_config *conf
 ) {
@@ -52,19 +56,19 @@ bool render_frame(
     }
 
     size_t line_max_width = (win_size.width - (2 * conf->win_padding)) / font->advance;
-    // uint8_t line_max_count= (win_size.height - (2 * conf->win_padding)) / font->line_skip;
+    uint8_t line_max_count= (win_size.height - (2 * conf->win_padding)) / font->line_skip;
     uint8_t line_count = 0;
-    char const *p = text;
+    char *p = text;
 
     for (; *p != '\0';) {
         line_renderer line = { 0 };
 
-        // if (line_count == line_max_count) {
-        //     SDL_RenderClear(renderer);
-        //     x = conf->win_padding;
-        //     y = conf->win_padding;
-        //     line_count = 0;
-        // }
+        if (line_count == line_max_count) {
+            calculate_scroll(tty, SCROLL_DOWN);
+            scroll(tty, text, buff_size, buff_pos);
+            p = text;
+            continue;
+        }
 
         for (; *p != '\0' && *p != '\n';) {
             if (line.length == line_max_width)
@@ -104,7 +108,7 @@ skip_line:
     return true;
 }
 
-void scroll(SDL_Renderer *renderer, tty_state *tty, enum event dir)
+void calculate_scroll(tty_state *tty, enum event dir)
 {
     pthread_mutex_lock(&tty->lock);
     uint8_t nlines = 0;
@@ -122,7 +126,10 @@ void scroll(SDL_Renderer *renderer, tty_state *tty, enum event dir)
             size_t nline_end = tty->head;
             for (; tty->buff[nline_end] != '\n' && nline_end > 0; nline_end--);
 
-            while (nlines < 1 && tty->scroll_tail != nline_end + 1) {
+            while (nlines < 1) {
+                if (tty->scroll_tail == nline_end + 1)
+                    break;
+
                 if (tty->buff[tty->scroll_tail] == '\n')
                     nlines++;
                 tty->scroll_tail = (tty->scroll_tail + 1) % TTY_RING_CAP;
@@ -136,38 +143,40 @@ void scroll(SDL_Renderer *renderer, tty_state *tty, enum event dir)
             return;
     }
 
-    pretty_log(PRETTY_DEBUG, "scroll: event=%s, tail=%zu head=%zu", event_name[dir], tty->scroll_tail, tty->head);
+    pretty_log(PRETTY_DEBUG, "scroll: event=%s, tail=%zu head=%zu", 
+            event_name[dir], tty->scroll_tail, tty->head);
     pthread_mutex_unlock(&tty->lock);
+}
+
+void scroll(tty_state *tty, char *buff, size_t buff_size, size_t *buff_pos)
+{
+    pthread_mutex_lock(&tty->lock);
+    pretty_log(PRETTY_INFO, "Scrolling to position: %zu", tty->scroll_tail);
+    size_t pos = tty->scroll_tail;
+    size_t visible = (tty->head >= pos)
+        ? (tty->head - pos)
+        : (TTY_RING_CAP - (pos - tty->head));
+
+    size_t limit = (visible < buff_size - 1) ? visible : buff_size - 1;
+    for (size_t i = 0; i < limit; i++) {
+        buff[i] = tty->buff[pos];
+        pos = (pos + 1) % TTY_RING_CAP;
+    }
+
+    buff[limit] = '\0';
+    *buff_pos = limit;
+
+    pthread_mutex_unlock(&tty->lock);
+    return;
 }
 
 void read_to_buff(
     tty_state *tty,
     char *buff,
     size_t buff_size,
-    size_t *buff_pos,
-    bool scroll
+    size_t *buff_pos
 ) {
     pthread_mutex_lock(&tty->lock);
-
-    if (scroll) {
-        pretty_log(PRETTY_INFO, "Scrolling to position: %zu", tty->scroll_tail);
-        size_t pos = tty->scroll_tail;
-        size_t visible = (tty->head >= pos)
-            ? (tty->head - pos)
-            : (TTY_RING_CAP - (pos - tty->head));
-
-        size_t limit = (visible < buff_size - 1) ? visible : buff_size - 1;
-        for (size_t i = 0; i < limit; i++) {
-            buff[i] = tty->buff[pos];
-            pos = (pos + 1) % TTY_RING_CAP;
-        }
-
-        buff[limit] = '\0';
-        *buff_pos = limit;
-
-        pthread_mutex_unlock(&tty->lock);
-        return;
-    }
 
     const char *p;
     size_t new_bytes = ring_read_span(tty, &p);

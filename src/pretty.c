@@ -173,20 +173,22 @@ int main(int argc, char **argv)
 
                 case SDL_EVENT_MOUSE_WHEEL:
                     if (event.wheel.y > 0)
-                        scroll(renderer, &tty, SCROLL_UP);
+                        calculate_scroll(&tty, SCROLL_UP);
                     else if (event.wheel.y < 0)
-                        scroll(renderer, &tty, SCROLL_DOWN);
+                        calculate_scroll(&tty, SCROLL_DOWN);
 
-                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos, true);
+                    scroll(&tty, buff, sizeof(buff), &buff_pos);
+                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
                     goto render_frame;
                     break;
 
                 case SDL_EVENT_USER:
-                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos, false);
+                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
                     goto render_frame;
 
 render_frame:
-                    if (!render_frame(renderer, win_size, buff, &font, config)) {
+                    if (!render_frame(renderer, win_size, &tty, buff,
+                                sizeof(buff), &buff_pos, &font, config)) {
                         is_running = false;
                         continue;
                     }
