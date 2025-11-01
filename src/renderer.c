@@ -1,5 +1,5 @@
-#include <stdio.h>
 #include <ctype.h>
+#include <stdio.h>
 
 #include "SDL3/SDL_render.h"
 #include "macro_utils.h"
@@ -110,33 +110,33 @@ void scroll(SDL_Renderer *renderer, tty_state *tty, enum event dir)
     uint8_t nlines = 0;
 
     switch (dir) {
-    case SCROLL_UP:
-        while (nlines < 2 && tty->scroll_tail != 0) {
-            tty->scroll_tail = (tty->scroll_tail + TTY_RING_CAP - 1) % TTY_RING_CAP;
-            if (tty->buff[tty->scroll_tail] == '\n')
-                nlines++;
-        }
-        break;
+        case SCROLL_UP:
+            while (nlines < 2 && tty->scroll_tail != 0) {
+                tty->scroll_tail = (tty->scroll_tail + TTY_RING_CAP - 1) % TTY_RING_CAP;
+                if (tty->buff[tty->scroll_tail] == '\n')
+                    nlines++;
+            }
+            break;
 
-    case SCROLL_DOWN: {
-        size_t nline_end = tty->head;
-        for (; tty->buff[nline_end] != '\n' && nline_end != 0; nline_end--);
+        case SCROLL_DOWN: {
+            size_t nline_end = tty->head;
+            for (; tty->buff[nline_end] != '\n' && nline_end > 0; nline_end--);
 
-        while (nlines < 1 && tty->scroll_tail != nline_end + 1) {
-            if (tty->buff[tty->scroll_tail] == '\n')
-                nlines++;
-            tty->scroll_tail = (tty->scroll_tail + 1) % TTY_RING_CAP;
+            while (nlines < 1 && tty->scroll_tail != nline_end + 1) {
+                if (tty->buff[tty->scroll_tail] == '\n')
+                    nlines++;
+                tty->scroll_tail = (tty->scroll_tail + 1) % TTY_RING_CAP;
+            }
+            break;
         }
-        break;
+
+        default:
+            pthread_mutex_unlock(&tty->lock);
+            pretty_log(PRETTY_ERROR, "unhandled scroll event %d", dir);
+            return;
     }
 
-    default:
-        pthread_mutex_unlock(&tty->lock);
-        pretty_log(PRETTY_ERROR, "unhandled scroll event %d", dir);
-        return;
-    }
-
-    pretty_log(PRETTY_DEBUG, "scroll: dir=%d, tail=%zu head=%zu", dir, tty->scroll_tail, tty->head);
+    pretty_log(PRETTY_DEBUG, "scroll: event=%s, tail=%zu head=%zu", event_name[dir], tty->scroll_tail, tty->head);
     pthread_mutex_unlock(&tty->lock);
 }
 
@@ -150,7 +150,7 @@ void read_to_buff(
     pthread_mutex_lock(&tty->lock);
 
     if (scroll) {
-        pretty_log(PRETTY_INFO, "Scrolling to %zu", tty->scroll_tail);
+        pretty_log(PRETTY_INFO, "Scrolling to position: %zu", tty->scroll_tail);
         size_t pos = tty->scroll_tail;
         size_t visible = (tty->head >= pos)
             ? (tty->head - pos)
