@@ -99,6 +99,7 @@ int main(int argc, char **argv)
         .buff_changed = false,
         .lock = PTHREAD_MUTEX_INITIALIZER,
         .overwrite_oldest = true,
+        .child_exited = false
     };
 
     if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0)
@@ -136,7 +137,6 @@ int main(int argc, char **argv)
         goto quit;
 
     // tty_write(&tty, TEST_COMMAND, length_of(TEST_COMMAND));
-
     for (bool is_running = true; is_running;) {
         SDL_Event event;
 #ifdef WAIT_EVENTS
@@ -221,6 +221,10 @@ render_frame:
         }
 #endif
         display_fps_metrics(win);
+        if (tty.child_exited) {
+            is_running = false;
+            tty.should_exit = true;
+        }
     }
 
 quit:
