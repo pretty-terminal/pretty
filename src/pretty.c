@@ -13,6 +13,8 @@
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_video.h>
 
+#include "SDL3/SDL_events.h"
+#include "SDL3/SDL_keycode.h"
 #include "config.h"
 #include "macro_utils.h"
 #include "pretty.h"
@@ -159,8 +161,26 @@ int main(int argc, char **argv)
                     goto render_frame;
                     break;
 
-                case SDL_EVENT_KEY_DOWN:
-                    if (event.key.key <= UCHAR_MAX && isprint(event.key.key))
+                case SDL_EVENT_KEY_DOWN: {
+                    SDL_Keymod mod = SDL_GetModState();
+
+                    if (mod & SDL_KMOD_LCTRL)
+                        switch (event.key.key) {
+                            case SDLK_C:
+                                tty_write(&tty, "\x03", 1);
+                                break;
+                            case SDLK_D:
+                                tty_write(&tty, "\x04", 1);
+                                break;
+                            case SDLK_Z:
+                                tty_write(&tty, "\x1A", 1);
+                                break;
+                            default:
+                                pretty_log(PRETTY_DEBUG, "unhandled key combination: LCtrl+%s",
+                                        SDL_GetKeyName(event.key.key));
+                                break;
+                        }
+                    else if (event.key.key <= UCHAR_MAX && isprint(event.key.key))
                         tty_write(&tty, (char *)&event.key.key, sizeof(char));
                     else if (event.key.key == SDLK_RETURN)
                         tty_write(&tty, "\r", length_of("\r"));
@@ -169,7 +189,7 @@ int main(int argc, char **argv)
                     else
                         pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
                     break;
-
+                }
 
                 case SDL_EVENT_MOUSE_WHEEL:
                     if (event.wheel.y > 0)
