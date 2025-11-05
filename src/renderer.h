@@ -19,10 +19,6 @@ enum event {
     FOREACH_EVENT(GENERATE_ENUM)
 };
 
-static const char *event_name[] = {
-    FOREACH_EVENT(GENERATE_STRING)
-};
-
 typedef struct {
     SDL_Surface *surface;
     SDL_Texture *texture;
