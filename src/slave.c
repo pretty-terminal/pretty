@@ -28,7 +28,8 @@ void sigchld(int a)
 
 	if (p < 0)
 		die("waiting for pid %hd failed: %s", pid, strerror(errno));
-	if (pid != p)
+
+	if (p == 0 || pid != p)
 		return;
 
 	if (WIFEXITED(stat) && WEXITSTATUS(stat))
@@ -196,14 +197,23 @@ size_t ring_write(tty_state *tty, const char *src, size_t nbytes)
 static
 bool tty_update(tty_state *tty)
 {
-    struct pollfd pfd = { .fd = tty->pty_master_fd, .events = POLL_IN };
+    struct pollfd pfd = { .fd = tty->pty_master_fd, .events = POLLIN };
     int ret = poll(&pfd, 1, 100);
 
-    if (ret < 0)
-        return perror("poll"), false;
+    if (ret < 0) {
+        if (errno == EINTR)
+            return true;
+        perror("poll");
+        return false;
+    }
 
     if (ret == 0)
         return true;
+
+    if (pfd.revents & (POLLHUP | POLLERR)) {
+        pretty_log(PRETTY_INFO, "TTY(%d) hangup or error", tty->pty_master_fd);
+        return false;
+    }
 
     if (pfd.revents & POLLIN) {
         char temp[TTY_RING_CAP];
@@ -246,7 +256,8 @@ void *tty_poll_loop(void *arg)
     tty_state *tty = arg;
 
     while (!tty->should_exit) {
-        tty_update(tty);
+        if ((tty->child_exited = !tty_update(tty)))
+            break;
         pthread_mutex_lock(&tty->lock);
         if (tty->buff_changed && tty->tail < tty->head) {
             notify_ui_flush();

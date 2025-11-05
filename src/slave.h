@@ -29,6 +29,7 @@ typedef struct {
     pthread_t thread;
     pthread_mutex_t lock;
 
+    bool child_exited;
     bool buff_changed;
     bool should_exit;
 
