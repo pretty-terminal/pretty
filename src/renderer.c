@@ -8,6 +8,10 @@
 #include "pthread.h"
 #include "slave.h"
 
+static const char *event_name[] = {
+    FOREACH_EVENT(GENERATE_STRING)
+};
+
 void display_fps_metrics(SDL_Window *win)
 {
     static unsigned short frames = 0;
