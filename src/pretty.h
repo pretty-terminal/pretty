@@ -13,8 +13,11 @@ void die(const char *errstr, ...)
     va_list ap;
     va_start(ap, errstr);
 
-    pretty_log(PRETTY_ERROR, "%s", errstr);
+    char buff[BUFSIZ - 64];
+    vsnprintf(buff, sizeof(buff), errstr, ap);
     va_end(ap);
+
+    pretty_log(PRETTY_ERROR, "%s", buff);
 
     exit(EXIT_FAILURE);
 }
