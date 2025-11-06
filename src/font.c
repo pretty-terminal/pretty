@@ -47,9 +47,9 @@ bool collect_font(char const *name, size_t size, font_info *font)
         return false;
     }
 
-    printf("font name: [%s]", name);
+    pretty_log(PRETTY_INFO, "font name: [%s]", name);
     char *font_path = find_font_path_from_fc_name(name);
-    printf("font path: [%s]", font_path);
+    pretty_log(PRETTY_INFO, "font path: [%s]", font_path);
     font->ttf = TTF_OpenFont(font_path, size);
 
     if (font == NULL) {

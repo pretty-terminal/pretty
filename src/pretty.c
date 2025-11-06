@@ -15,6 +15,7 @@
 
 #include "SDL3/SDL_events.h"
 #include "SDL3/SDL_keycode.h"
+#include "SDL3_ttf/SDL_ttf.h"
 #include "config.h"
 #include "macro_utils.h"
 #include "pretty.h"
@@ -229,10 +230,13 @@ render_frame:
 
 quit:
     thread_handle_quit(&tty);
+    TTF_CloseFont(font.ttf);
+    TTF_Quit();
     SDL_DestroyWindow(win);
     SDL_DestroyRenderer(renderer);
     SDL_Quit();
     free(cat_config);
+    pretty_log(PRETTY_INFO, "Succesfully closed Pretty instance");
 
     return EXIT_SUCCESS;
 }
