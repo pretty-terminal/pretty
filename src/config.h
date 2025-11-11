@@ -36,7 +36,7 @@ typedef struct {
     char *font_name;
     unsigned char font_size;
     unsigned char win_padding;
-    char color_palette[COLOR_COUNT][length_of("rrggbbaa") - 1];
+    char color_palette[COLOR_COUNT][length_of("rrggbbaa") + 1];
 } generic_config;
 
 generic_config *return_config(char *cat_config);
