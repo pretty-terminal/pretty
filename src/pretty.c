@@ -100,7 +100,7 @@ int main(int argc, char **argv)
         .buff_changed = false,
         .lock = PTHREAD_MUTEX_INITIALIZER,
         .overwrite_oldest = true,
-        .child_exited = false
+        .child_exited = false,
     };
 
     if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0)
@@ -198,7 +198,6 @@ int main(int argc, char **argv)
                     else if (event.wheel.y < 0)
                         calculate_scroll(&tty, SCROLL_DOWN);
 
-                    scroll(&tty, buff, sizeof(buff), &buff_pos);
                     read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
                     goto render_frame;
                     break;
