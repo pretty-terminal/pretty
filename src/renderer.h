@@ -49,11 +49,5 @@ void read_to_buff(
 );
 
 void calculate_scroll(tty_state *tty, enum event dir);
-void scroll(
-    tty_state *tty,
-    char *buff,
-    size_t buff_size,
-    size_t *buff_pos
-);
 
 #endif // RENDERER_H
