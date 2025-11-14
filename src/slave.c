@@ -191,6 +191,7 @@ size_t ring_write(tty_state *tty, const char *src, size_t nbytes)
     memcpy(tty->buff, src + first, nbytes - first);
 
     tty->head = (tty->head + nbytes) % TTY_RING_CAP;
+
     return nbytes;
 }
 

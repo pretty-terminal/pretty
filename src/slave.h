@@ -16,7 +16,7 @@ enum term_mode {
     MODE_UTF8        = 1 << 6,
 };
 
-enum { TTY_RING_CAP = BUFSIZ };
+enum { TTY_RING_CAP = 64 * 1024 };
 
 typedef struct {
     int pty_master_fd;

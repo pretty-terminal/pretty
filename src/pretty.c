@@ -198,7 +198,6 @@ int main(int argc, char **argv)
                     else if (event.wheel.y < 0)
                         calculate_scroll(&tty, SCROLL_DOWN);
 
-                    scroll(&tty, buff, sizeof(buff), &buff_pos);
                     read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
                     goto render_frame;
                     break;
