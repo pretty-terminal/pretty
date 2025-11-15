@@ -50,17 +50,11 @@ bool render_frame(
 
     SDL_Color text_color = { HEX_TO_RGB(conf->color_palette[15]), .a=255 };
 
-    int x = conf->win_padding;
-    int y = conf->win_padding;
+    unsigned int x = conf->pad_x;
+    unsigned int y = conf->pad_y;
 
-    if ((2 * conf->win_padding + font->advance) >= win_size.width) {
-        /* We dont have room to render anything, so dont */
-        SDL_RenderPresent(renderer);
-        return true;
-    }
-
-    size_t line_max_width = (win_size.width - (2 * conf->win_padding)) / font->advance;
-    uint8_t line_max_count= (win_size.height - (2 * conf->win_padding)) / font->line_skip;
+    size_t line_max_width = (win_size.width - (2 * x)) / font->advance;
+    uint8_t line_max_count= (win_size.height - (2 * y)) / font->line_skip;
     uint8_t line_count = 0;
     char *p = text;
 

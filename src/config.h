@@ -34,8 +34,9 @@ enum {
 
 typedef struct {
     char *font_name;
-    unsigned char font_size;
-    unsigned char win_padding;
+    unsigned int font_size;
+    unsigned int pad_x;
+    unsigned int pad_y;
     char color_palette[COLOR_COUNT][length_of("rrggbbaa") + 1];
 } generic_config;
 
