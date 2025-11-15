@@ -23,19 +23,19 @@ static pid_t pid;
 static
 void sigchld(int a)
 {
-	int stat;
-	pid_t p = waitpid(pid, &stat, WNOHANG);
+    int stat;
+    pid_t p = waitpid(pid, &stat, WNOHANG);
 
-	if (p < 0)
-		die("waiting for pid %hd failed: %s", pid, strerror(errno));
+    if (p < 0)
+        die("waiting for pid %hd failed: %s", pid, strerror(errno));
 
-	if (p == 0 || pid != p)
-		return;
+    if (p == 0 || pid != p)
+        return;
 
-	if (WIFEXITED(stat) && WEXITSTATUS(stat))
-		die("child exited with status %d", WEXITSTATUS(stat));
-	else if (WIFSIGNALED(stat))
-		die("child terminated due to signal %d", WTERMSIG(stat));
+    if (WIFEXITED(stat) && WEXITSTATUS(stat))
+        die("child exited with status %d", WEXITSTATUS(stat));
+    else if (WIFSIGNALED(stat))
+        die("child terminated due to signal %d", WTERMSIG(stat));
 }
 
 static
@@ -48,22 +48,22 @@ void exec_sh(char *args[static 1])
         die("getpwuid: %s", errno != 0 ? strerror(errno) : "unknown error");
     }
 
-	unsetenv("COLUMNS");
-	unsetenv("LINES");
-	unsetenv("TERMCAP");
-	setenv("LOGNAME", pw->pw_name, 1);
-	setenv("USER", pw->pw_name, 1);
+    unsetenv("COLUMNS");
+    unsetenv("LINES");
+    unsetenv("TERMCAP");
+    setenv("LOGNAME", pw->pw_name, 1);
+    setenv("USER", pw->pw_name, 1);
     // TODO: we will handle real shell shenanigans later
-	// setenv("SHELL", shell, 1);
-	setenv("HOME", pw->pw_dir, 1);
-	setenv("TERM", "pretty", 1);
+    // setenv("SHELL", shell, 1);
+    setenv("HOME", pw->pw_dir, 1);
+    setenv("TERM", "pretty", 1);
 
-	signal(SIGCHLD, SIG_DFL);
-	signal(SIGHUP, SIG_DFL);
-	signal(SIGINT, SIG_DFL);
-	signal(SIGQUIT, SIG_DFL);
-	signal(SIGTERM, SIG_DFL);
-	signal(SIGALRM, SIG_DFL);
+    signal(SIGCHLD, SIG_DFL);
+    signal(SIGHUP, SIG_DFL);
+    signal(SIGINT, SIG_DFL);
+    signal(SIGQUIT, SIG_DFL);
+    signal(SIGTERM, SIG_DFL);
+    signal(SIGALRM, SIG_DFL);
 
     execvp(args[0], args);
     perror("execvp failed");
@@ -131,7 +131,7 @@ void tty_write(tty_state *tty, const char *s, size_t n)
 {
     const char *next;
 
-	// This is similar to how the kernel handles ONLCR for ttys
+    // This is similar to how the kernel handles ONLCR for ttys
     while (n > 0) {
         if (*s == '\r') {
             next = s + 1;
