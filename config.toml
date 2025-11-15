@@ -3,7 +3,8 @@ family = "Terminus"
 size = 12
 
 [window]
-padding = 12
+pad_x = 12
+pad_y = 12
 
 [palette]
 background = "000000FF"

@@ -27,7 +27,8 @@ struct cval {
 static generic_config CONFIG = {
     .font_name = "Terminus",
     .font_size = 12,
-    .win_padding = 12,
+    .pad_x = 12,
+    .pad_y = 12,
     .color_palette = {
         "000000FF",
         "AA0000FF",
@@ -52,7 +53,8 @@ static generic_config CONFIG = {
 static struct cval CONFIG_VALIDATION[] = {
    { "font", "family", V_STRING, &CONFIG.font_name },
    { "font", "size", V_NUMBER, &CONFIG.font_size },
-   { "window", "padding", V_NUMBER, &CONFIG.win_padding },
+   { "window", "pad_x", V_NUMBER, &CONFIG.pad_x },
+   { "window", "pad_y", V_NUMBER, &CONFIG.pad_y },
    { "palette", "background", V_COLOR, CONFIG.color_palette[COLOR_BACKGROUND] },
    { "palette", "color0", V_COLOR, CONFIG.color_palette[0] },
    { "palette", "color1", V_COLOR, CONFIG.color_palette[1] },
@@ -165,18 +167,28 @@ char *parse_value(struct cval *p, char *s)
 static
 char *parse_key_value(char const *section_name, char *s)
 {
-    char const *key = s;
+    char *key = s;
 
-    for (; isalnum(*s); s++);
-    bool seen = *s == '=';
-    *s++ = '\0';
-    for (; isspace(*s); s++);
-    if (*s != '=' && !seen) {
-        pretty_log(PRETTY_ERROR, "%s: Missing assignment operator", section_name);
+    while (isalnum(*s) || *s == '_')
+        s++;
+
+    char *end_of_key = s;
+
+    while (isspace(*s))
+        s++;
+
+    bool seen = (*s == '=');
+
+    if (!seen) {
+        pretty_log(PRETTY_ERROR, "%s: Missing assignment operator", key);
         return s;
     }
-    s++;
-    for (; isspace(*s); s++);
+
+    *end_of_key = '\0';
+
+    s++;  // skip '='
+    while (isspace(*s))
+        s++;
 
     struct cval *p = NULL;
     for (size_t i = 0; i < length_of(CONFIG_VALIDATION); i++) {
