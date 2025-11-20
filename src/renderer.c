@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "SDL3/SDL_render.h"
 #include "macro_utils.h"
@@ -35,7 +36,7 @@ void display_fps_metrics(SDL_Window *win)
  *
  * Sadly, we still need to create a bunch of surface/texture.
  * TODO: investigate
- **/
+ */
 bool render_frame(
     SDL_Renderer *renderer,
     struct dim win_size,
@@ -46,6 +47,7 @@ bool render_frame(
     font_info *font,
     generic_config *conf
 ) {
+    pthread_mutex_lock(&tty->lock);
     SDL_RenderClear(renderer);
 
     SDL_Color text_color = { HEX_TO_RGB(conf->color_palette[15]), .a=255 };
@@ -54,38 +56,64 @@ bool render_frame(
     unsigned int y = conf->pad_y;
 
     size_t line_max_width = (win_size.width - (2 * x)) / font->advance;
-    uint8_t line_max_count= (win_size.height - (2 * y)) / font->line_skip;
-    uint8_t line_count = 0;
-    char *p = text;
+    size_t line_max_count= (win_size.height - (2 * y)) / font->line_skip;
 
-    for (; *p != '\0';) {
+    size_t chars_in_window = 0;
+    size_t max_chars = line_max_width * line_max_count;
+
+
+    size_t pos = tty->scroll_tail;
+    size_t line_count = 0;
+
+    char *line_buffer = malloc(line_max_width + 1);
+    if (line_buffer == NULL) {
+        pthread_mutex_unlock(&tty->lock);
+        return false;
+    }
+
+    while (pos != *buff_pos && line_count < line_max_count) {
         line_renderer line = { 0 };
+        size_t line_start = pos;
 
-        if (line_count == line_max_count) {
-            calculate_scroll(tty, SCROLL_DOWN);
-            scroll(tty, text, buff_size, buff_pos);
-            p = text;
-            continue;
-        }
-
-        for (; *p != '\0' && *p != '\n';) {
-            if (line.length == line_max_width)
-                break;
+        while (pos != *buff_pos && text[pos] != '\n' && line.length < line_max_width) {
             line.length++;
-            p++;
+            pos = (pos + 1) % buff_size;
+            chars_in_window++;
+
+            if (chars_in_window >= max_chars)
+                goto done_rendering;
         }
 
         if (line.length == 0)
             goto skip_line;
 
+        // Render this line
+        for (size_t i = 0; i < line.length; i++) {
+            char c = text[(line_start + i) % buff_size];
+
+            if (isprint(c))
+                line_buffer[i] = c;
+            else
+                line_buffer[i] = ' ';
+        }
+
+        line_buffer[line.length] = '\0';
+
         line.surface = TTF_RenderText_Blended(
-            font->ttf, text, line.length, text_color);
-        if (line.surface == NULL)
+            font->ttf, line_buffer, line.length, text_color);
+        if (line.surface == NULL) {
+            free(line_buffer);
+            pthread_mutex_unlock(&tty->lock);
             return false;
+        }
 
         line.texture = SDL_CreateTextureFromSurface(renderer, line.surface);
-        if (line.texture == NULL)
+        if (line.texture == NULL) {
+            SDL_DestroySurface(line.surface);
+            free(line_buffer);
+            pthread_mutex_unlock(&tty->lock);
             return false;
+        }
 
         /* TODO: font size is known */
         SDL_FRect dst = { x, y, line.texture->w, line.texture->h };
@@ -95,21 +123,27 @@ bool render_frame(
 
 skip_line:
         y += font->line_skip;
-        if (*p == '\n')
-            p++;
-        text = p;
+
+        if (pos != *buff_pos && text[pos] == '\n') {
+            pos = (pos + 1) % buff_size;
+            chars_in_window++;
+        }
 
         line_count++;
     }
 
+done_rendering:
+    free(line_buffer);
     SDL_RenderPresent(renderer);
+    pthread_mutex_unlock(&tty->lock);
+
     return true;
 }
 
 void calculate_scroll(tty_state *tty, enum event dir)
 {
     pthread_mutex_lock(&tty->lock);
-    uint8_t nlines = 0;
+    size_t nlines = 0;
 
     switch (dir) {
         case SCROLL_UP:
@@ -125,7 +159,7 @@ void calculate_scroll(tty_state *tty, enum event dir)
             for (; tty->buff[nline_end] != '\n' && nline_end > 0; nline_end--);
 
             while (nlines < 1) {
-                if (tty->scroll_tail == nline_end + 1)
+                if (tty->scroll_tail == nline_end)
                     break;
 
                 if (tty->buff[tty->scroll_tail] == '\n')
@@ -144,28 +178,6 @@ void calculate_scroll(tty_state *tty, enum event dir)
     pretty_log(PRETTY_DEBUG, "scroll: event=%s, tail=%zu head=%zu", 
             event_name[dir], tty->scroll_tail, tty->head);
     pthread_mutex_unlock(&tty->lock);
-}
-
-void scroll(tty_state *tty, char *buff, size_t buff_size, size_t *buff_pos)
-{
-    pthread_mutex_lock(&tty->lock);
-    pretty_log(PRETTY_INFO, "Scrolling to position: %zu", tty->scroll_tail);
-    size_t pos = tty->scroll_tail;
-    size_t visible = (tty->head >= pos)
-        ? (tty->head - pos)
-        : (TTY_RING_CAP - (pos - tty->head));
-
-    size_t limit = (visible < buff_size - 1) ? visible : buff_size - 1;
-    for (size_t i = 0; i < limit; i++) {
-        buff[i] = tty->buff[pos];
-        pos = (pos + 1) % TTY_RING_CAP;
-    }
-
-    buff[limit] = '\0';
-    *buff_pos = limit;
-
-    pthread_mutex_unlock(&tty->lock);
-    return;
 }
 
 void read_to_buff(
