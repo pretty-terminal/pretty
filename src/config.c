@@ -51,27 +51,27 @@ static generic_config CONFIG = {
 };
 
 static struct cval CONFIG_VALIDATION[] = {
-   { "font", "family", V_STRING, &CONFIG.font_name },
-   { "font", "size", V_NUMBER, &CONFIG.font_size },
-   { "window", "pad_x", V_NUMBER, &CONFIG.pad_x },
-   { "window", "pad_y", V_NUMBER, &CONFIG.pad_y },
-   { "palette", "background", V_COLOR, CONFIG.color_palette[COLOR_BACKGROUND] },
-   { "palette", "color0", V_COLOR, CONFIG.color_palette[0] },
-   { "palette", "color1", V_COLOR, CONFIG.color_palette[1] },
-   { "palette", "color2", V_COLOR, CONFIG.color_palette[2] },
-   { "palette", "color3", V_COLOR, CONFIG.color_palette[3] },
-   { "palette", "color4", V_COLOR, CONFIG.color_palette[4] },
-   { "palette", "color5", V_COLOR, CONFIG.color_palette[5] },
-   { "palette", "color6", V_COLOR, CONFIG.color_palette[6] },
-   { "palette", "color7", V_COLOR, CONFIG.color_palette[7] },
-   { "palette", "color8", V_COLOR, CONFIG.color_palette[8] },
-   { "palette", "color9", V_COLOR, CONFIG.color_palette[9] },
-   { "palette", "color10", V_COLOR, CONFIG.color_palette[10] },
-   { "palette", "color11", V_COLOR, CONFIG.color_palette[11] },
-   { "palette", "color12", V_COLOR, CONFIG.color_palette[12] },
-   { "palette", "color13", V_COLOR, CONFIG.color_palette[13] },
-   { "palette", "color14", V_COLOR, CONFIG.color_palette[14] },
-   { "palette", "color15", V_COLOR, CONFIG.color_palette[15] },
+   { "font",    "family",     V_STRING, &CONFIG.font_name                      },
+   { "font",    "size",       V_NUMBER, &CONFIG.font_size                      },
+   { "window",  "pad_x",      V_NUMBER, &CONFIG.pad_x                          },
+   { "window",  "pad_y",      V_NUMBER, &CONFIG.pad_y                          },
+   { "palette", "background", V_COLOR,  CONFIG.color_palette[COLOR_BACKGROUND] },
+   { "palette", "color0",     V_COLOR,  CONFIG.color_palette[0]                },
+   { "palette", "color1",     V_COLOR,  CONFIG.color_palette[1]                },
+   { "palette", "color2",     V_COLOR,  CONFIG.color_palette[2]                },
+   { "palette", "color3",     V_COLOR,  CONFIG.color_palette[3]                },
+   { "palette", "color4",     V_COLOR,  CONFIG.color_palette[4]                },
+   { "palette", "color5",     V_COLOR,  CONFIG.color_palette[5]                },
+   { "palette", "color6",     V_COLOR,  CONFIG.color_palette[6]                },
+   { "palette", "color7",     V_COLOR,  CONFIG.color_palette[7]                },
+   { "palette", "color8",     V_COLOR,  CONFIG.color_palette[8]                },
+   { "palette", "color9",     V_COLOR,  CONFIG.color_palette[9]                },
+   { "palette", "color10",    V_COLOR,  CONFIG.color_palette[10]               },
+   { "palette", "color11",    V_COLOR,  CONFIG.color_palette[11]               },
+   { "palette", "color12",    V_COLOR,  CONFIG.color_palette[12]               },
+   { "palette", "color13",    V_COLOR,  CONFIG.color_palette[13]               },
+   { "palette", "color14",    V_COLOR,  CONFIG.color_palette[14]               },
+   { "palette", "color15",    V_COLOR,  CONFIG.color_palette[15]               },
 };
 
 static
@@ -79,10 +79,10 @@ ssize_t path_add(char *out, ssize_t len, char *suffix)
 {
     size_t suffix_len = strlen(suffix);
 
-    if (len < 0)
-        return -1;
-    if ((len + suffix_len + 1) > PATH_MAX)
-        return -1;
+    if (len < 0) return -1;
+
+    if ((len + suffix_len + 1) > PATH_MAX) return -1;
+
     memcpy(out + len, suffix, suffix_len + 1);
     return len + suffix_len;
 }
@@ -96,21 +96,23 @@ char *get_default_config_file(void)
     if (xdg_home != NULL) {
         len = strlen(xdg_home);
         memcpy(lookup, xdg_home, len);
+
         path_add(lookup, len, CONFIG_PATH_SUFFIX);
         pretty_log(PRETTY_INFO, "Checking (XDG_CONFIG_HOME) [%s] for config", lookup);
-        if (access(lookup, F_OK) == 0)
-            return lookup;
+
+        if (access(lookup, F_OK) == 0) return lookup;
     }
 
     const char *home = getenv("HOME");
     if (home != NULL) {
         len = strlen(home);
         memcpy(lookup, home, len);
+
         len = path_add(lookup, len, "/.config");
         path_add(lookup, len, CONFIG_PATH_SUFFIX);
+
         pretty_log(PRETTY_INFO, "Checking (HOME) [%s] for config", lookup);
-        if (access(lookup, F_OK) == 0)
-            return lookup;
+        if (access(lookup, F_OK) == 0) return lookup;
     }
 
     return NULL;
@@ -122,42 +124,47 @@ char *parse_value(struct cval *p, char *s)
 
     switch (p->value) {
         case V_STRING:
-            if (*s != '\"')
-                pretty_log(PRETTY_ERROR, "Missing start quote!");
+            if (*s != '\"') pretty_log(PRETTY_ERROR, "Missing start quote!");
             else s++;
+
             *(char **)p->target = s;
             s += strcspn(s, "\"\n");
-            if (*s != '\"')
-                pretty_log(PRETTY_ERROR, "Unterminated string!");
+
+            if (*s != '\"') pretty_log(PRETTY_ERROR, "Unterminated string!");
+
             *s = '\0';
             break;
         case V_NUMBER:
             n = strtoul(s, &s, 10);
+
             if (n > UCHAR_MAX) {
                 pretty_log(PRETTY_ERROR, "Value for [%s].[%s] is not in range 0-255!",
                     p->section_name, p->key_name);
                 break;
             }
+
             *(unsigned char *)p->target = n;
             break;
         case V_COLOR:
-            if (*s != '\"')
-                pretty_log(PRETTY_ERROR, "Missing start quote!");
+            if (*s != '\"') pretty_log(PRETTY_ERROR, "Missing start quote!");
             else s++;
-            if (*s == '#')
-                s++;
+
+            if (*s == '#') s++;
+
             n = 0;
             for (; isxdigit(s[n]); n++);
+
             if (n != 6 && n != 8) {
                 pretty_log(PRETTY_ERROR,
                     "Color [%s].[%s] must be in rgb(a) hex format: %s",
                     p->section_name, p->key_name, s);
                 break;
             }
+
             memcpy(p->target, s, n);
             s += n;
-            if (*s != '\"')
-                pretty_log(PRETTY_ERROR, "Missing end quote!");
+
+            if (*s != '\"') pretty_log(PRETTY_ERROR, "Missing end quote!");
             else s++;
             break;
     }
@@ -168,17 +175,12 @@ static
 char *parse_key_value(char const *section_name, char *s)
 {
     char *key = s;
-
-    while (isalnum(*s) || *s == '_')
-        s++;
+    while (isalnum(*s) || *s == '_') s++;
 
     char *end_of_key = s;
-
-    while (isspace(*s))
-        s++;
+    while (isspace(*s)) s++;
 
     bool seen = (*s == '=');
-
     if (!seen) {
         pretty_log(PRETTY_ERROR, "%s: Missing assignment operator", key);
         return s;
@@ -187,17 +189,17 @@ char *parse_key_value(char const *section_name, char *s)
     *end_of_key = '\0';
 
     s++;  // skip '='
-    while (isspace(*s))
-        s++;
+    while (isspace(*s)) s++;
 
     struct cval *p = NULL;
-    for (size_t i = 0; i < length_of(CONFIG_VALIDATION); i++) {
+    for (size_t i = 0; i < length_of(CONFIG_VALIDATION); i++)
         if (!strcmp(CONFIG_VALIDATION[i].section_name, section_name)
-          && !strcmp(CONFIG_VALIDATION[i].key_name, key)) {
+          && !strcmp(CONFIG_VALIDATION[i].key_name, key))
+        {
             p = &CONFIG_VALIDATION[i];
             break;
         }
-    }
+
     if (p == NULL) {
         pretty_log(PRETTY_ERROR, "key [%s].[%s] is not a valid a setting",
             section_name, key);
@@ -212,26 +214,28 @@ generic_config *return_config(char *cat_config)
     // TODO: write a even better parser
     char const *section_name = "global";
 
-    if (cat_config == NULL)
-        cat_config = "";
+    if (cat_config == NULL) cat_config = "";
 
     for (char *s = cat_config; *s != '\0'; s++) {
         if (*s == '[') {
             section_name = ++s;
             for (; isalpha(*s); s++);
-            if (*s != ']')
-                pretty_log(PRETTY_ERROR, "Unterminated config section!");
+
+            if (*s != ']') pretty_log(PRETTY_ERROR, "Unterminated config section!");
+
             *s++ = '\0';
             goto skip;
         }
+
         if (isalpha(*s)) {
             s = parse_key_value(section_name, s);
             goto skip;
         }
-        if (*s == '#')
-            goto skip;
-        if (*s != '\n')
-            pretty_log(PRETTY_ERROR, "<<%.10s>> Garbage at the end of the line", s);
+
+        if (*s == '#') goto skip;
+
+        if (*s != '\n') pretty_log(PRETTY_ERROR, "<<%.10s>> Garbage at the end of the line", s);
+
 skip:
         s += strcspn(s, "\n");
     }

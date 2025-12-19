@@ -45,8 +45,8 @@ bool render_frame(
     size_t buff_size,
     size_t *buff_pos,
     font_info *font,
-    generic_config *conf
-) {
+    generic_config *conf)
+{
     pthread_mutex_lock(&tty->lock);
     SDL_RenderClear(renderer);
 
@@ -75,32 +75,30 @@ bool render_frame(
         line_renderer line = { 0 };
         size_t line_start = pos;
 
-        while (pos != *buff_pos && text[pos] != '\n' && line.length < line_max_width) {
+        while (pos != *buff_pos
+            && text[pos] != '\n'
+            && line.length < line_max_width)
+        {
             line.length++;
             pos = (pos + 1) % buff_size;
             chars_in_window++;
 
-            if (chars_in_window >= max_chars)
-                goto done_rendering;
+            if (chars_in_window >= max_chars) goto done_rendering;
         }
 
-        if (line.length == 0)
-            goto skip_line;
+        if (line.length == 0) goto skip_line;
 
         // Render this line
         for (size_t i = 0; i < line.length; i++) {
             char c = text[(line_start + i) % buff_size];
 
-            if (isprint(c))
-                line_buffer[i] = c;
-            else
-                line_buffer[i] = ' ';
+            if (isprint(c)) line_buffer[i] = c;
+            else line_buffer[i] = ' ';
         }
 
         line_buffer[line.length] = '\0';
 
-        line.surface = TTF_RenderText_Blended(
-            font->ttf, line_buffer, line.length, text_color);
+        line.surface = TTF_RenderText_Blended(font->ttf, line_buffer, line.length, text_color);
         if (line.surface == NULL) {
             free(line_buffer);
             pthread_mutex_unlock(&tty->lock);
@@ -149,26 +147,21 @@ void calculate_scroll(tty_state *tty, enum event dir)
         case SCROLL_UP:
             while (nlines < 2 && tty->scroll_tail != 0) {
                 tty->scroll_tail = (tty->scroll_tail + TTY_RING_CAP - 1) % TTY_RING_CAP;
-                if (tty->buff[tty->scroll_tail] == '\n')
-                    nlines++;
+                if (tty->buff[tty->scroll_tail] == '\n') nlines++;
             }
             break;
-
         case SCROLL_DOWN: {
             size_t nline_end = tty->head;
             for (; tty->buff[nline_end] != '\n' && nline_end > 0; nline_end--);
 
             while (nlines < 1) {
-                if (tty->scroll_tail == nline_end)
-                    break;
+                if (tty->scroll_tail == nline_end) break;
+                if (tty->buff[tty->scroll_tail] == '\n') nlines++;
 
-                if (tty->buff[tty->scroll_tail] == '\n')
-                    nlines++;
                 tty->scroll_tail = (tty->scroll_tail + 1) % TTY_RING_CAP;
             }
             break;
         }
-
         default:
             pthread_mutex_unlock(&tty->lock);
             pretty_log(PRETTY_ERROR, "unhandled scroll event %d", dir);
@@ -184,8 +177,8 @@ void read_to_buff(
     tty_state *tty,
     char *buff,
     size_t buff_size,
-    size_t *buff_pos
-) {
+    size_t *buff_pos)
+{
     pthread_mutex_lock(&tty->lock);
 
     const char *p;
@@ -204,13 +197,11 @@ void read_to_buff(
                     pretty_log(PRETTY_INFO, "Backspace: removed char at position %zu", *buff_pos);
                     buff[*buff_pos] = '\0';
                 }
-            } else {
-                if (*buff_pos < buff_size - 1) {
-                    buff[(*buff_pos)++] = ch;
-                    buff[*buff_pos] = '\0';
-                    pretty_log(PRETTY_INFO, "Added char '%c' at position %zu",
-                        (isprint(ch)) ? ch : '?', *buff_pos - 1);
-                }
+            } else if (*buff_pos < buff_size - 1) {
+                buff[(*buff_pos)++] = ch;
+                buff[*buff_pos] = '\0';
+                pretty_log(PRETTY_INFO, "Added char '%c' at position %zu",
+                    (isprint(ch)) ? ch : '?', *buff_pos - 1);
             }
 
             if (*buff_pos >= buff_size - 1) {

@@ -48,22 +48,21 @@ void thread_handle_quit(tty_state *tty)
 
     void *res;
     int s = pthread_join(tty->thread, &res);
-    if (s != 0)
-        pretty_log(PRETTY_ERROR, "pthread_join failed");
-    else
-        pretty_log(PRETTY_DEBUG, "thread [%lu] exited cleanly", tty->thread);
+
+    if (s != 0) pretty_log(PRETTY_ERROR, "pthread_join failed");
+    else pretty_log(PRETTY_DEBUG, "thread [%lu] exited cleanly", tty->thread);
 }
 
 int main(int argc, char **argv)
 {
     char *config_file = NULL;
-    int option_index;
-    int c;
+    int option_index, c;
 
     while (true) {
         c = getopt_long(argc, argv, ":c:", LONG_OPTIONS, &option_index);
-        if (c < 0)
-            break;
+
+        if (c < 0) break;
+
         switch (c) {
             case 'c':
                 config_file = optarg;
@@ -72,11 +71,12 @@ int main(int argc, char **argv)
                 break;
             default:
                 pretty_log(PRETTY_INFO, "?? getopt returned character code 0%o ??", c);
+                break;
         }
     }
 
-    if (config_file == NULL)
-        config_file = get_default_config_file();
+    if (config_file == NULL) config_file = get_default_config_file();
+
     else if (access(config_file, F_OK) != 0) {
         pretty_log(PRETTY_ERROR, "Provided config file [%s] does not exists", config_file);
         config_file = get_default_config_file();
@@ -103,8 +103,7 @@ int main(int argc, char **argv)
         .child_exited = false
     };
 
-    if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0)
-        return EXIT_FAILURE;
+    if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0) return EXIT_FAILURE;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         pretty_log(PRETTY_ERROR, "Couldn't initialize SDL: %s", SDL_GetError());
@@ -116,13 +115,13 @@ int main(int argc, char **argv)
     struct dim win_size = { SCREEN_WIDTH, SCREEN_HEIGHT };
 
     if (!SDL_CreateWindowAndRenderer(
-        "examples/renderer/clear",
-        win_size.width, win_size.height,
+            "examples/renderer/clear",
+            win_size.width, win_size.height,
             SDL_WINDOW_RESIZABLE
             | SDL_WINDOW_HIGH_PIXEL_DENSITY
             | SDL_WINDOW_TRANSPARENT,
-        &win, &renderer)
-    ) {
+            &win, &renderer))
+    {
         pretty_log(PRETTY_ERROR, "Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -134,10 +133,8 @@ int main(int argc, char **argv)
 #endif
 
     font_info font;
-    if (!collect_font(config->font_name, config->font_size, &font))
-        goto quit;
+    if (!collect_font(config->font_name, config->font_size, &font)) goto quit;
 
-    // tty_write(&tty, TEST_COMMAND, length_of(TEST_COMMAND));
     for (bool is_running = true; is_running;) {
         SDL_Event event;
 #ifdef WAIT_EVENTS
@@ -149,7 +146,6 @@ int main(int argc, char **argv)
                 case SDL_EVENT_QUIT:
                     is_running = false;
                     break;
-
                 case SDL_EVENT_WINDOW_RESIZED:
                     win_size.width = event.window.data1;
                     win_size.height = event.window.data2;
@@ -157,63 +153,60 @@ int main(int argc, char **argv)
                             win_size.width, win_size.height);
                     goto render_frame;
                     break;
-
                 case SDL_EVENT_WINDOW_EXPOSED:
                     goto render_frame;
                     break;
-
                 case SDL_EVENT_KEY_DOWN: {
                     SDL_Keymod mod = SDL_GetModState();
 
-                    if (mod & SDL_KMOD_LCTRL)
-                        switch (event.key.key) {
-                            case SDLK_C:
-                                tty_write(&tty, "\x03", 1);
-                                break;
-                            case SDLK_D:
-                                tty_write(&tty, "\x04", 1);
-                                break;
-                            case SDLK_Z:
-                                tty_write(&tty, "\x1A", 1);
-                                break;
-                            default:
-                                pretty_log(PRETTY_DEBUG, "unhandled key combination: LCtrl+%s",
-                                        SDL_GetKeyName(event.key.key));
-                                break;
-                        }
+                    if (mod & SDL_KMOD_LCTRL) switch (event.key.key) {
+                        case SDLK_C:
+                            tty_write(&tty, "\x03", 1);
+                            break;
+                        case SDLK_D:
+                            tty_write(&tty, "\x04", 1);
+                            break;
+                        case SDLK_Z:
+                            tty_write(&tty, "\x1A", 1);
+                            break;
+                        default:
+                            pretty_log(PRETTY_DEBUG, "unhandled key combination: LCtrl+%s",
+                                    SDL_GetKeyName(event.key.key));
+                            break;
+                    }
+
                     else if (event.key.key <= UCHAR_MAX && isprint(event.key.key))
                         tty_write(&tty, (char *)&event.key.key, sizeof(char));
+
                     else if (event.key.key == SDLK_RETURN)
                         tty_write(&tty, "\r", length_of("\r"));
+
                     else if (event.key.key == SDLK_BACKSPACE)
-                        tty_erase_last(&tty);
-                    else
-                        pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
+                        tty_write(&tty, "\x7f", 1);
+
+                    else pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
                     break;
                 }
 
                 case SDL_EVENT_MOUSE_WHEEL:
-                    if (event.wheel.y > 0)
-                        calculate_scroll(&tty, SCROLL_UP);
-                    else if (event.wheel.y < 0)
-                        calculate_scroll(&tty, SCROLL_DOWN);
+                    if (event.wheel.y > 0) calculate_scroll(&tty, SCROLL_UP);
+                    else if (event.wheel.y < 0) calculate_scroll(&tty, SCROLL_DOWN);
 
                     read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
                     goto render_frame;
                     break;
-
                 case SDL_EVENT_USER:
                     read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
                     goto render_frame;
 
 render_frame:
                     if (!render_frame(renderer, win_size, &tty, buff,
-                                sizeof(buff), &buff_pos, &font, config)) {
+                                sizeof(buff), &buff_pos, &font, config))
+                    {
                         is_running = false;
                         continue;
                     }
                     break;
-
                 default:
                     break;
             }
@@ -221,6 +214,7 @@ render_frame:
         }
 #endif
         display_fps_metrics(win);
+
         if (tty.child_exited) {
             is_running = false;
             tty.should_exit = true;
