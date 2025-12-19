@@ -39,7 +39,6 @@ typedef struct {
 int tty_new(char *args[static 1]);
 void *tty_poll_loop(void *arg);
 void tty_write(tty_state *tty, const char *s, size_t n);
-void tty_erase_last(tty_state *tty);
 size_t ring_read_span(const tty_state *tty, const char **ptr);
 void ring_consume(tty_state *tty, size_t k);
 

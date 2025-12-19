@@ -10,8 +10,7 @@ char *find_font_path_from_fc_name(const char *font_name)
 {
     char *out = NULL;
 
-    if (!FcInit())
-        return NULL;
+    if (!FcInit()) return NULL;
 
     FcPattern *pattern = FcNameParse((const FcChar8 *)font_name);
     FcConfigSubstitute(NULL, pattern, FcMatchPattern);
@@ -69,6 +68,7 @@ bool collect_font(char const *name, size_t size, font_info *font)
 
         TTF_GetGlyphMetrics(font->ttf, c, NULL, NULL, NULL, NULL, &advance);
         mono &= advance == font->advance;
+
         if (!mono) {
             pretty_log(PRETTY_ERROR,
                 "\033[31mWarning! Your font is not monospace."
