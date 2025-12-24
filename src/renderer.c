@@ -32,9 +32,12 @@ void display_fps_metrics(SDL_Window *win)
     }
 }
 
-glyph_atlas* create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config *conf)
+glyph_atlas *create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config *conf)
 {
-    glyph_atlas *atlas = malloc(sizeof(glyph_atlas));
+    glyph_atlas *atlas = malloc(sizeof *atlas);
+
+    if (atlas == NULL)
+        return NULL;
 
     int minx, maxx, miny, maxy, advance;
     TTF_GetGlyphMetrics(font, 'M', &minx, &maxx, &miny, &maxy, &advance);
@@ -43,8 +46,9 @@ glyph_atlas* create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config
 
     int atlas_w = atlas->w * 16;
     int atlas_h = atlas->h * 8;
-    atlas->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
-                                       SDL_TEXTUREACCESS_TARGET, atlas_w, atlas_h);
+    atlas->texture = SDL_CreateTexture(
+        renderer, SDL_PIXELFORMAT_RGBA8888,
+        SDL_TEXTUREACCESS_TARGET, atlas_w, atlas_h);
 
     SDL_SetTextureBlendMode(atlas->texture, SDL_BLENDMODE_BLEND);
     SDL_SetRenderTarget(renderer, atlas->texture);
@@ -55,7 +59,7 @@ glyph_atlas* create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config
     SDL_Color text_color = { HEX_TO_RGB(conf->color_palette[15]), .a=255 };
     SDL_Color bg_color = { HEX_TO_RGB(conf->color_palette[COLOR_BACKGROUND]), .a=255 };
 
-    for (int i = 32; i < 127; i++) {
+    for (int i = ' '; i <= '~'; i++) {
         SDL_Surface *s = TTF_RenderGlyph_LCD(font, i, text_color, bg_color);
         if (!s) continue;
 
@@ -64,7 +68,7 @@ glyph_atlas* create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config
         int col = i % 16;
         int row = i / 16;
 
-        SDL_FRect dst = { 
+        SDL_FRect dst = {
             (float)(col * atlas->w),
             (float)(row * atlas->h),
             (float)s->w,
@@ -82,6 +86,54 @@ glyph_atlas* create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config
 
     SDL_SetRenderTarget(renderer, NULL);
     return atlas;
+}
+
+static void calculate_scroll_internal(tty_state *tty, enum event dir)
+{
+    switch (dir) {
+        case SCROLL_UP: {
+            if (tty->scroll_tail == 0) break;
+
+            size_t pos = (tty->scroll_tail + TTY_RING_CAP - 1) % TTY_RING_CAP;
+
+            while (pos != 0 && tty->buff[pos] != '\n')
+                pos = (pos + TTY_RING_CAP - 1) % TTY_RING_CAP;
+
+            if (tty->buff[pos] == '\n' && pos != 0) {
+                pos = (pos + TTY_RING_CAP - 1) % TTY_RING_CAP;
+
+                while (pos != 0 && tty->buff[pos] != '\n')
+                    pos = (pos + TTY_RING_CAP - 1) % TTY_RING_CAP;
+
+                if (tty->buff[pos] == '\n') pos = (pos + 1) % TTY_RING_CAP;
+            }
+
+            tty->scroll_tail = pos;
+
+            break;
+        }
+        case SCROLL_DOWN: {
+            if (tty->scroll_tail == tty->head) break;
+
+            size_t pos = tty->scroll_tail;
+            while (pos != tty->head && tty->buff[pos] != '\n')
+                pos = (pos + 1) % TTY_RING_CAP;
+
+            if (pos != tty->head && tty->buff[pos] == '\n')
+                pos = (pos + 1) % TTY_RING_CAP;
+
+            if (pos != tty->head) tty->scroll_tail = pos;
+
+            break;
+        }
+        default:
+            pthread_mutex_unlock(&tty->lock);
+            pretty_log(PRETTY_ERROR, "unhandled scroll event %d", dir);
+            return;
+    }
+
+    pretty_log(PRETTY_DEBUG, "scroll: event=%s, tail=%zu head=%zu",
+            event_name[dir], tty->scroll_tail, tty->head);
 }
 
 bool render_frame(
@@ -123,11 +175,11 @@ bool render_frame(
             if (isprint(c)) {
                 SDL_FRect src_rect = atlas->glyphs[(unsigned char)c];
 
-                SDL_FRect dst_rect = { 
+                SDL_FRect dst_rect = {
                     (float)(x + (current_line_len * font->advance)),
-                    (float)y, 
-                    (float)font->advance, 
-                    (float)font->line_skip 
+                    (float)y,
+                    (float)font->advance,
+                    (float)font->line_skip
                 };
 
                 SDL_RenderTexture(renderer, atlas->texture, &src_rect, &dst_rect);
@@ -145,44 +197,20 @@ bool render_frame(
 
     }
 
+    if (line_count >= line_max_count && pos != *buff_pos)
+        calculate_scroll_internal(tty, SCROLL_DOWN);
+
     SDL_RenderPresent(renderer);
     pthread_mutex_unlock(&tty->lock);
 
     return true;
 }
 
+
 void calculate_scroll(tty_state *tty, enum event dir)
 {
     pthread_mutex_lock(&tty->lock);
-    size_t nlines = 0;
-
-    switch (dir) {
-        case SCROLL_UP:
-            while (nlines < 2 && tty->scroll_tail != 0) {
-                tty->scroll_tail = (tty->scroll_tail + TTY_RING_CAP - 1) % TTY_RING_CAP;
-                if (tty->buff[tty->scroll_tail] == '\n') nlines++;
-            }
-            break;
-        case SCROLL_DOWN: {
-            size_t nline_end = tty->head;
-            for (; tty->buff[nline_end] != '\n' && nline_end > 0; nline_end--);
-
-            while (nlines < 1) {
-                if (tty->scroll_tail == nline_end) break;
-                if (tty->buff[tty->scroll_tail] == '\n') nlines++;
-
-                tty->scroll_tail = (tty->scroll_tail + 1) % TTY_RING_CAP;
-            }
-            break;
-        }
-        default:
-            pthread_mutex_unlock(&tty->lock);
-            pretty_log(PRETTY_ERROR, "unhandled scroll event %d", dir);
-            return;
-    }
-
-    pretty_log(PRETTY_DEBUG, "scroll: event=%s, tail=%zu head=%zu", 
-            event_name[dir], tty->scroll_tail, tty->head);
+    calculate_scroll_internal(tty, dir);
     pthread_mutex_unlock(&tty->lock);
 }
 
