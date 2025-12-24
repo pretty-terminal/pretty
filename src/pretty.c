@@ -133,7 +133,16 @@ int main(int argc, char **argv)
 #endif
 
     font_info font;
-    if (!collect_font(config->font_name, config->font_size, &font)) goto quit;
+    if (!collect_font(config->font_name, config->font_size, &font)) {
+        pretty_log(PRETTY_ERROR, "Failed to retrieve specified font");
+        goto quit;
+    }
+
+    glyph_atlas *atlas = create_atlas(renderer, font.ttf, config);
+    if (!atlas) {
+        pretty_log(PRETTY_ERROR, "Failed to bake glyph atlas");
+        goto quit;
+    }
 
     for (bool is_running = true; is_running;) {
         SDL_Event event;
@@ -200,7 +209,7 @@ int main(int argc, char **argv)
                     goto render_frame;
 
 render_frame:
-                    if (!render_frame(renderer, win_size, &tty, buff,
+                    if (!render_frame(renderer, atlas, win_size, &tty, buff,
                                 sizeof(buff), &buff_pos, &font, config))
                     {
                         is_running = false;
@@ -220,6 +229,9 @@ render_frame:
             tty.should_exit = true;
         }
     }
+
+    SDL_DestroyTexture(atlas->texture);
+    free(atlas);
 
 quit:
     thread_handle_quit(&tty);

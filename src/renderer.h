@@ -20,6 +20,12 @@ enum event {
 };
 
 typedef struct {
+    SDL_Texture *texture;
+    SDL_FRect glyphs[128];
+    int w, h;
+} glyph_atlas;
+
+typedef struct {
     SDL_Surface *surface;
     SDL_Texture *texture;
     size_t length;
@@ -31,8 +37,10 @@ struct dim {
 };
 
 void display_fps_metrics(SDL_Window *win);
+glyph_atlas* create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config *conf);
 bool render_frame(
     SDL_Renderer *renderer,
+    glyph_atlas *atlas,
     struct dim win_size,
     tty_state *tty,
     char *text,

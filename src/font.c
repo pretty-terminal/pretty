@@ -14,7 +14,6 @@ char *find_font_path_from_fc_name(const char *font_name)
 
     FcPattern *pattern = FcNameParse((const FcChar8 *)font_name);
     FcConfigSubstitute(NULL, pattern, FcMatchPattern);
-    FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_DEMIBOLD);
     FcDefaultSubstitute(pattern);
 
     FcResult result;
