@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "SDL3/SDL_render.h"
+#include "SDL3_ttf/SDL_ttf.h"
 #include "macro_utils.h"
 #include "renderer.h"
 #include "log.h"
@@ -31,14 +32,61 @@ void display_fps_metrics(SDL_Window *win)
     }
 }
 
-/* Note: This does the job of TTF_RenderText_Blended_Wrapped,
- * without computing Wraplines and thus is faster.
- *
- * Sadly, we still need to create a bunch of surface/texture.
- * TODO: investigate
- */
+glyph_atlas* create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config *conf)
+{
+    glyph_atlas *atlas = malloc(sizeof(glyph_atlas));
+
+    int minx, maxx, miny, maxy, advance;
+    TTF_GetGlyphMetrics(font, 'M', &minx, &maxx, &miny, &maxy, &advance);
+    atlas->w = advance;
+    atlas->h = TTF_GetFontHeight(font);
+
+    int atlas_w = atlas->w * 16;
+    int atlas_h = atlas->h * 8;
+    atlas->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                                       SDL_TEXTUREACCESS_TARGET, atlas_w, atlas_h);
+
+    SDL_SetTextureBlendMode(atlas->texture, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderTarget(renderer, atlas->texture);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+    SDL_RenderClear(renderer);
+
+
+    SDL_Color text_color = { HEX_TO_RGB(conf->color_palette[15]), .a=255 };
+    SDL_Color bg_color = { HEX_TO_RGB(conf->color_palette[COLOR_BACKGROUND]), .a=255 };
+
+    for (int i = 32; i < 127; i++) {
+        SDL_Surface *s = TTF_RenderGlyph_LCD(font, i, text_color, bg_color);
+        if (!s) continue;
+
+        SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
+
+        int col = i % 16;
+        int row = i / 16;
+
+        SDL_FRect dst = { 
+            (float)(col * atlas->w),
+            (float)(row * atlas->h),
+            (float)s->w,
+            (float)s->h
+        };
+
+        SDL_RenderTexture(renderer, t, NULL, &dst);
+
+        // Save the source rect for later
+        atlas->glyphs[i] = dst;
+
+        SDL_DestroySurface(s);
+        SDL_DestroyTexture(t);
+    }
+
+    SDL_SetRenderTarget(renderer, NULL);
+    return atlas;
+}
+
 bool render_frame(
     SDL_Renderer *renderer,
+    glyph_atlas *atlas,
     struct dim win_size,
     tty_state *tty,
     char *text,
@@ -48,9 +96,11 @@ bool render_frame(
     generic_config *conf)
 {
     pthread_mutex_lock(&tty->lock);
-    SDL_RenderClear(renderer);
 
-    SDL_Color text_color = { HEX_TO_RGB(conf->color_palette[15]), .a=255 };
+    SDL_Color bg = { HEX_TO_RGB(conf->color_palette[COLOR_BACKGROUND]), .a=255 };
+    SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
+
+    SDL_RenderClear(renderer);
 
     unsigned int x = conf->pad_x;
     unsigned int y = conf->pad_y;
@@ -58,80 +108,43 @@ bool render_frame(
     size_t line_max_width = (win_size.width - (2 * x)) / font->advance;
     size_t line_max_count= (win_size.height - (2 * y)) / font->line_skip;
 
-    size_t chars_in_window = 0;
-    size_t max_chars = line_max_width * line_max_count;
-
-
     size_t pos = tty->scroll_tail;
     size_t line_count = 0;
 
-    char *line_buffer = malloc(line_max_width + 1);
-    if (line_buffer == NULL) {
-        pthread_mutex_unlock(&tty->lock);
-        return false;
-    }
-
     while (pos != *buff_pos && line_count < line_max_count) {
-        line_renderer line = { 0 };
-        size_t line_start = pos;
+        size_t current_line_len = 0;
 
         while (pos != *buff_pos
             && text[pos] != '\n'
-            && line.length < line_max_width)
+            && current_line_len < line_max_width)
         {
-            line.length++;
+            char c = text[pos];
+
+            if (isprint(c)) {
+                SDL_FRect src_rect = atlas->glyphs[(unsigned char)c];
+
+                SDL_FRect dst_rect = { 
+                    (float)(x + (current_line_len * font->advance)),
+                    (float)y, 
+                    (float)font->advance, 
+                    (float)font->line_skip 
+                };
+
+                SDL_RenderTexture(renderer, atlas->texture, &src_rect, &dst_rect);
+            }
+
+            current_line_len++;
             pos = (pos + 1) % buff_size;
-            chars_in_window++;
-
-            if (chars_in_window >= max_chars) goto done_rendering;
         }
 
-        if (line.length == 0) goto skip_line;
-
-        // Render this line
-        for (size_t i = 0; i < line.length; i++) {
-            char c = text[(line_start + i) % buff_size];
-
-            if (isprint(c)) line_buffer[i] = c;
-            else line_buffer[i] = ' ';
-        }
-
-        line_buffer[line.length] = '\0';
-
-        line.surface = TTF_RenderText_Blended(font->ttf, line_buffer, line.length, text_color);
-        if (line.surface == NULL) {
-            free(line_buffer);
-            pthread_mutex_unlock(&tty->lock);
-            return false;
-        }
-
-        line.texture = SDL_CreateTextureFromSurface(renderer, line.surface);
-        if (line.texture == NULL) {
-            SDL_DestroySurface(line.surface);
-            free(line_buffer);
-            pthread_mutex_unlock(&tty->lock);
-            return false;
-        }
-
-        /* TODO: font size is known */
-        SDL_FRect dst = { x, y, line.texture->w, line.texture->h };
-        SDL_RenderTexture(renderer, line.texture, NULL, &dst);
-        SDL_DestroySurface(line.surface);
-        SDL_DestroyTexture(line.texture);
-
-skip_line:
-        y += font->line_skip;
-
-        if (pos != *buff_pos && text[pos] == '\n') {
-            pos = (pos + 1) % buff_size;
-            chars_in_window++;
-        }
+        if (pos != *buff_pos && text[pos] == '\n') pos = (pos + 1) % buff_size;
 
         line_count++;
+
+        if (line_count < line_max_count) y += font->line_skip;
+
     }
 
-done_rendering:
-    free(line_buffer);
     SDL_RenderPresent(renderer);
     pthread_mutex_unlock(&tty->lock);
 
