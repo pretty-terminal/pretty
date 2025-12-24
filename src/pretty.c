@@ -139,7 +139,7 @@ int main(int argc, char **argv)
     }
 
     glyph_atlas *atlas = create_atlas(renderer, font.ttf, config);
-    if (!atlas) {
+    if (atlas == NULL) {
         pretty_log(PRETTY_ERROR, "Failed to bake glyph atlas");
         goto quit;
     }
@@ -196,7 +196,6 @@ int main(int argc, char **argv)
                     else pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
                     break;
                 }
-
                 case SDL_EVENT_MOUSE_WHEEL:
                     if (event.wheel.y > 0) calculate_scroll(&tty, SCROLL_UP);
                     else if (event.wheel.y < 0) calculate_scroll(&tty, SCROLL_DOWN);
