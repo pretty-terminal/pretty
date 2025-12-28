@@ -2,6 +2,7 @@ CC ?= gcc
 
 BUILD := .build
 OUT := pretty
+DEBUG_OUT := pretty.debug
 
 SRC := $(shell find src -type f -name "*.c")
 OBJS := $(SRC:%.c=$(BUILD)/%.o)
@@ -9,10 +10,18 @@ OBJS := $(SRC:%.c=$(BUILD)/%.o)
 LIBS := sdl3 sdl3-ttf fontconfig
 $(info $(LIBS))
 
+DEBUG ?= 0
+
 CFLAGS += $(shell cat warning_flags.txt)
-CFLAGS += -O2
 CFLAGS += -iquote src
 CFLAGS += $(shell pkg-config --cflags $(LIBS))
+
+ifeq ($(DEBUG),1)
+	OUT := $(DEBUG_OUT)
+	CFLAGS += -g -O0 -fno-omit-frame-pointer
+else
+	CFLAGS += -O2
+endif
 
 LDLIBS += $(shell pkg-config --libs $(LIBS))
 
