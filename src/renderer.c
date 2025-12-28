@@ -132,8 +132,8 @@ static void calculate_scroll_internal(tty_state *tty, enum event dir)
             return;
     }
 
-    pretty_log(PRETTY_DEBUG, "scroll: event=%s, tail=%zu head=%zu",
-            event_name[dir], tty->scroll_tail, tty->head);
+    pretty_log(PRETTY_DEBUG, "scroll: event=%s, scroll_tail=%zu tail=%zu head=%zu",
+            event_name[dir], tty->scroll_tail, tty->tail, tty->head);
 }
 
 bool render_frame(
@@ -197,7 +197,7 @@ bool render_frame(
 
     }
 
-    if (line_count >= line_max_count && pos != *buff_pos)
+    if (tty->auto_scroll && line_count >= line_max_count && pos != *buff_pos)
         calculate_scroll_internal(tty, SCROLL_DOWN);
 
     SDL_RenderPresent(renderer);

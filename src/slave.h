@@ -23,6 +23,7 @@ typedef struct {
 
     char buff[TTY_RING_CAP]; /* TODO: think about this */
     size_t head;
+    size_t last_head;
     size_t tail;
     size_t scroll_tail;
 
@@ -32,6 +33,7 @@ typedef struct {
     bool child_exited;
     bool buff_changed;
     bool should_exit;
+    bool auto_scroll;
 
     bool overwrite_oldest;
 } tty_state;

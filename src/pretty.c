@@ -100,7 +100,8 @@ int main(int argc, char **argv)
         .buff_changed = false,
         .lock = PTHREAD_MUTEX_INITIALIZER,
         .overwrite_oldest = true,
-        .child_exited = false
+        .auto_scroll = true,
+        .child_exited = false,
     };
 
     if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0) return EXIT_FAILURE;
@@ -197,6 +198,7 @@ int main(int argc, char **argv)
                     break;
                 }
                 case SDL_EVENT_MOUSE_WHEEL:
+                    tty.auto_scroll = false;
                     if (event.wheel.y > 0) calculate_scroll(&tty, SCROLL_UP);
                     else if (event.wheel.y < 0) calculate_scroll(&tty, SCROLL_DOWN);
 
@@ -214,6 +216,7 @@ render_frame:
                         is_running = false;
                         continue;
                     }
+                    if (tty.scroll_tail == tty.last_head) tty.auto_scroll = true;
                     break;
                 default:
                     break;
