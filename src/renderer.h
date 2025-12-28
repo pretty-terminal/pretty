@@ -25,12 +25,6 @@ typedef struct {
     int w, h;
 } glyph_atlas;
 
-typedef struct {
-    SDL_Surface *surface;
-    SDL_Texture *texture;
-    size_t length;
-} line_renderer;
-
 struct dim {
     int width;
     int height;
