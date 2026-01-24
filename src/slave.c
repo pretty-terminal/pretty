@@ -24,20 +24,6 @@
 static pid_t pid;
 
 static
-void sigchld(int a)
-{
-    int stat;
-    pid_t p = waitpid(pid, &stat, WNOHANG);
-
-    if (p < 0) die("waiting for pid %hd failed: %s", pid, strerror(errno));
-
-    if (p == 0 || pid != p) return;
-
-    if (WIFEXITED(stat) && WEXITSTATUS(stat)) die("child exited with status %d", WEXITSTATUS(stat));
-    else if (WIFSIGNALED(stat)) die("child terminated due to signal %d", WTERMSIG(stat));
-}
-
-static
 void exec_sh(char *args[static 1])
 {
     const struct passwd *pw;
@@ -112,7 +98,6 @@ bool pty_init(pty_session *pty)
             return false;
         default:
             close(pty->slave);
-            signal(SIGCHLD, sigchld);
             return true;
     }
 
@@ -178,6 +163,7 @@ bool pty_read(term *pretty)
     if (ret == 0) return true;
 
     if (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) {
+        waitpid(pid, NULL, WNOHANG);
         pretty_log(PRETTY_INFO, "PTY(%d) hangup or error", pty->master);
         return false;
     }
