@@ -5,19 +5,7 @@
 
     #include "font.h"
     #include "config.h"
-    #include "slave.h"
-
-
-#define FOREACH_EVENT(EVENT) \
-        EVENT(SCROLL_UP)   \
-        EVENT(SCROLL_DOWN)  \
-
-#define GENERATE_ENUM(ENUM) ENUM,
-#define GENERATE_STRING(STRING) #STRING,
-
-enum event {
-    FOREACH_EVENT(GENERATE_ENUM)
-};
+    #include "terminal.h"
 
 typedef struct {
     SDL_Texture *texture;
@@ -36,20 +24,12 @@ bool render_frame(
     SDL_Renderer *renderer,
     glyph_atlas *atlas,
     struct dim win_size,
-    tty_state *tty,
+    term *pretty,
     char *text,
     size_t buff_size,
     size_t *buff_pos,
     font_info *font,
     generic_config *conf
 );
-void read_to_buff(
-    tty_state *tty,
-    char *buff,
-    size_t buff_size,
-    size_t *buff_pos
-);
-
-void calculate_scroll(tty_state *tty, enum event dir);
 
 #endif // RENDERER_H
