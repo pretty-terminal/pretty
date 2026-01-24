@@ -19,10 +19,12 @@
 #include "config.h"
 #include "macro_utils.h"
 #include "pretty.h"
+#include "signal.h"
 #include "slave.h"
 #include "font.h"
 #include "renderer.h"
 #include "log.h"
+#include "terminal.h"
 
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 720
@@ -41,16 +43,20 @@ void notify_ui_flush(void)
     SDL_PushEvent(&ev);
 }
 
-void thread_handle_quit(tty_state *tty)
+void thread_handle_quit(pty_session *pty)
 {
-    tty->should_exit = true;
-    pretty_log(PRETTY_DEBUG, "waiting for thread [%lu] to exit", tty->thread);
+    pty->should_exit = true;
+    pretty_log(PRETTY_DEBUG, "waiting for thread [%lu] to exit", pty->thread);
+
+    if (pthread_kill(pty->thread, SIGUSR1) != 0) {
+        pretty_log(PRETTY_ERROR, "failed to send signal to thread");
+    }
 
     void *res;
-    int s = pthread_join(tty->thread, &res);
+    int s = pthread_join(pty->thread, &res);
 
     if (s != 0) pretty_log(PRETTY_ERROR, "pthread_join failed");
-    else pretty_log(PRETTY_DEBUG, "thread [%lu] exited cleanly", tty->thread);
+    else pretty_log(PRETTY_DEBUG, "thread [%lu] exited cleanly", pty->thread);
 }
 
 int main(int argc, char **argv)
@@ -95,16 +101,22 @@ int main(int argc, char **argv)
     char buff[TTY_RING_CAP] = { 0 };
     size_t buff_pos = 0;
 
-    tty_state tty = {
-        .pty_master_fd = tty_new((char *[]){ "/bin/sh", NULL }),
+    term pretty = {
+        .pty = {
+            .io_lock = PTHREAD_MUTEX_INITIALIZER,
+            .child_exited = false
+        },
+        .buffer_lock = PTHREAD_MUTEX_INITIALIZER,
         .buff_changed = false,
-        .lock = PTHREAD_MUTEX_INITIALIZER,
         .overwrite_oldest = true,
         .auto_scroll = true,
-        .child_exited = false,
     };
 
-    if (pthread_create(&tty.thread, NULL, tty_poll_loop, &tty) != 0) return EXIT_FAILURE;
+    if (!pty_pair(&pretty.pty)) die("failed to pair pty");
+
+    if (!pty_init(&pretty.pty)) die("failed to initialize pty");
+
+    if (pthread_create(&pretty.pty.thread, NULL, pty_poll_loop, &pretty) != 0) return EXIT_FAILURE;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         pretty_log(PRETTY_ERROR, "Couldn't initialize SDL: %s", SDL_GetError());
@@ -171,13 +183,13 @@ int main(int argc, char **argv)
 
                     if (mod & SDL_KMOD_LCTRL) switch (event.key.key) {
                         case SDLK_C:
-                            tty_write(&tty, "\x03", 1);
+                            pty_write(&pretty.pty, "\x03", 1);
                             break;
                         case SDLK_D:
-                            tty_write(&tty, "\x04", 1);
+                            pty_write(&pretty.pty, "\x04", 1);
                             break;
                         case SDLK_Z:
-                            tty_write(&tty, "\x1A", 1);
+                            pty_write(&pretty.pty, "\x1A", 1);
                             break;
                         default:
                             pretty_log(PRETTY_DEBUG, "unhandled key combination: LCtrl+%s",
@@ -186,37 +198,37 @@ int main(int argc, char **argv)
                     }
 
                     else if (event.key.key <= UCHAR_MAX && isprint(event.key.key))
-                        tty_write(&tty, (char *)&event.key.key, sizeof(char));
+                        pty_write(&pretty.pty, (char *)&event.key.key, sizeof(char));
 
                     else if (event.key.key == SDLK_RETURN)
-                        tty_write(&tty, "\r", length_of("\r"));
+                        pty_write(&pretty.pty, "\r", length_of("\r"));
 
                     else if (event.key.key == SDLK_BACKSPACE)
-                        tty_write(&tty, "\x7f", 1);
+                        pty_write(&pretty.pty, "\x7f", 1);
 
                     else pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
                     break;
                 }
                 case SDL_EVENT_MOUSE_WHEEL:
-                    tty.auto_scroll = false;
-                    if (event.wheel.y > 0) calculate_scroll(&tty, SCROLL_UP);
-                    else if (event.wheel.y < 0) calculate_scroll(&tty, SCROLL_DOWN);
+                    pretty.auto_scroll = false;
+                    if (event.wheel.y > 0) calculate_scroll(&pretty, SCROLL_UP);
+                    else if (event.wheel.y < 0) calculate_scroll(&pretty, SCROLL_DOWN);
 
-                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
+                    read_to_buff(&pretty, buff, sizeof(buff), &buff_pos);
                     goto render_frame;
                     break;
                 case SDL_EVENT_USER:
-                    read_to_buff(&tty, buff, sizeof(buff), &buff_pos);
+                    read_to_buff(&pretty, buff, sizeof(buff), &buff_pos);
                     goto render_frame;
 
 render_frame:
-                    if (!render_frame(renderer, atlas, win_size, &tty, buff,
+                    if (!render_frame(renderer, atlas, win_size, &pretty, buff,
                                 sizeof(buff), &buff_pos, &font, config))
                     {
                         is_running = false;
                         continue;
                     }
-                    if (tty.scroll_tail == tty.last_head) tty.auto_scroll = true;
+                    if (pretty.scroll_tail == pretty.last_head) pretty.auto_scroll = true;
                     break;
                 default:
                     break;
@@ -226,9 +238,9 @@ render_frame:
 #endif
         display_fps_metrics(win);
 
-        if (tty.child_exited) {
+        if (pretty.pty.child_exited) {
             is_running = false;
-            tty.should_exit = true;
+            pretty.pty.should_exit = true;
         }
     }
 
@@ -236,7 +248,7 @@ render_frame:
     free(atlas);
 
 quit:
-    thread_handle_quit(&tty);
+    thread_handle_quit(&pretty.pty);
     TTF_CloseFont(font.ttf);
     TTF_Quit();
     SDL_DestroyWindow(win);

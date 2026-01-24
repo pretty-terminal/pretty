@@ -6,13 +6,10 @@
 #include "SDL3_ttf/SDL_ttf.h"
 #include "macro_utils.h"
 #include "renderer.h"
-#include "log.h"
 #include "pthread.h"
 #include "slave.h"
-
-static const char *event_name[] = {
-    FOREACH_EVENT(GENERATE_STRING)
-};
+#include "terminal.h"
+#include "pretty.h"
 
 void display_fps_metrics(SDL_Window *win)
 {
@@ -88,66 +85,18 @@ glyph_atlas *create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config
     return atlas;
 }
 
-static void calculate_scroll_internal(tty_state *tty, enum event dir)
-{
-    switch (dir) {
-        case SCROLL_UP: {
-            if (tty->scroll_tail == 0) break;
-
-            size_t pos = (tty->scroll_tail + TTY_RING_CAP - 1) % TTY_RING_CAP;
-
-            while (pos != 0 && tty->buff[pos] != '\n')
-                pos = (pos + TTY_RING_CAP - 1) % TTY_RING_CAP;
-
-            if (tty->buff[pos] == '\n' && pos != 0) {
-                pos = (pos + TTY_RING_CAP - 1) % TTY_RING_CAP;
-
-                while (pos != 0 && tty->buff[pos] != '\n')
-                    pos = (pos + TTY_RING_CAP - 1) % TTY_RING_CAP;
-
-                if (tty->buff[pos] == '\n') pos = (pos + 1) % TTY_RING_CAP;
-            }
-
-            tty->scroll_tail = pos;
-
-            break;
-        }
-        case SCROLL_DOWN: {
-            if (tty->scroll_tail == tty->head) break;
-
-            size_t pos = tty->scroll_tail;
-            while (pos != tty->head && tty->buff[pos] != '\n')
-                pos = (pos + 1) % TTY_RING_CAP;
-
-            if (pos != tty->head && tty->buff[pos] == '\n')
-                pos = (pos + 1) % TTY_RING_CAP;
-
-            if (pos != tty->head) tty->scroll_tail = pos;
-
-            break;
-        }
-        default:
-            pthread_mutex_unlock(&tty->lock);
-            pretty_log(PRETTY_ERROR, "unhandled scroll event %d", dir);
-            return;
-    }
-
-    pretty_log(PRETTY_DEBUG, "scroll: event=%s, scroll_tail=%zu tail=%zu head=%zu",
-            event_name[dir], tty->scroll_tail, tty->tail, tty->head);
-}
-
 bool render_frame(
     SDL_Renderer *renderer,
     glyph_atlas *atlas,
     struct dim win_size,
-    tty_state *tty,
+    term *pretty,
     char *text,
     size_t buff_size,
     size_t *buff_pos,
     font_info *font,
     generic_config *conf)
 {
-    pthread_mutex_lock(&tty->lock);
+    pthread_mutex_lock(&pretty->buffer_lock);
 
     SDL_Color bg = { HEX_TO_RGB(conf->color_palette[COLOR_BACKGROUND]), .a=255 };
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
@@ -160,7 +109,7 @@ bool render_frame(
     size_t line_max_width = (win_size.width - (2 * x)) / font->advance;
     size_t line_max_count= (win_size.height - (2 * y)) / font->line_skip;
 
-    size_t pos = tty->scroll_tail;
+    size_t pos = pretty->scroll_tail;
     size_t line_count = 0;
 
     while (pos != *buff_pos && line_count < line_max_count) {
@@ -197,60 +146,11 @@ bool render_frame(
 
     }
 
-    if (tty->auto_scroll && line_count >= line_max_count && pos != *buff_pos)
-        calculate_scroll_internal(tty, SCROLL_DOWN);
+    if (pretty->auto_scroll && line_count >= line_max_count && pos != *buff_pos)
+        calculate_scroll_internal(pretty, SCROLL_DOWN);
 
     SDL_RenderPresent(renderer);
-    pthread_mutex_unlock(&tty->lock);
+    pthread_mutex_unlock(&pretty->buffer_lock);
 
     return true;
-}
-
-
-void calculate_scroll(tty_state *tty, enum event dir)
-{
-    pthread_mutex_lock(&tty->lock);
-    calculate_scroll_internal(tty, dir);
-    pthread_mutex_unlock(&tty->lock);
-}
-
-void read_to_buff(
-    tty_state *tty,
-    char *buff,
-    size_t buff_size,
-    size_t *buff_pos)
-{
-    pthread_mutex_lock(&tty->lock);
-
-    const char *p;
-    size_t new_bytes = ring_read_span(tty, &p);
-
-    if (new_bytes) {
-        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)",
-           new_bytes, tty->tail, tty->head);
-
-        for (size_t i = 0; i < new_bytes; i++) {
-            char ch = p[i];
-
-            if (ch == '\b' || ch == 0x7f) {
-                if (*buff_pos > 0) {
-                    (*buff_pos)--;
-                    pretty_log(PRETTY_INFO, "Backspace: removed char at position %zu", *buff_pos);
-                    buff[*buff_pos] = '\0';
-                }
-            } else if (*buff_pos < buff_size - 1) {
-                buff[(*buff_pos)++] = ch;
-                buff[*buff_pos] = '\0';
-                pretty_log(PRETTY_INFO, "Added char '%c' at position %zu",
-                    (isprint(ch)) ? ch : '?', *buff_pos - 1);
-            }
-
-            if (*buff_pos >= buff_size - 1) {
-                pretty_log(PRETTY_WARN, "buff_pos overflow, resseting");
-                *buff_pos = 0;
-            }
-        }
-        ring_consume(tty, new_bytes);
-    }
-    pthread_mutex_unlock(&tty->lock);
 }

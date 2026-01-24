@@ -1,8 +1,9 @@
+#define _XOPEN_SOURCE 600
+
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
-#include <pty.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stddef.h>
@@ -10,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 #include "pretty.h"
@@ -17,6 +19,7 @@
 #include "macro_utils.h"
 #include "pthread.h"
 #include "log.h"
+#include "terminal.h"
 
 static pid_t pid;
 
@@ -65,16 +68,31 @@ void exec_sh(char *args[static 1])
     exit(EXIT_FAILURE);
 }
 
-int tty_new(char *args[static 1])
+bool pty_pair(pty_session *pty)
 {
-    int cmdfd = -1;
-    int master;
-    int slave;
+    char *slave_name;
 
-    if (openpty(&master, &slave, NULL, NULL, NULL) < 0)
-        die("openpty call failed: %s", strerror(errno));
+    const int PTY_OPEN_FLAGS = O_RDWR | O_NOCTTY;
 
-    pretty_log(PRETTY_INFO, "Successfully opened a new tty");
+    pty->master = posix_openpt(PTY_OPEN_FLAGS);
+
+    if (pty->master < 0) die("openpty call failed: %s", strerror(errno));
+    if (grantpt(pty->master) == -1) die("failed to grantpt()");
+    if (unlockpt(pty->master) == -1) die("failed to unlockpt()");
+
+    slave_name = ptsname(pty->master);
+    if (slave_name == NULL) die("failed to ptsname()");
+
+    pty->slave = open(slave_name, PTY_OPEN_FLAGS);
+    if (pty->slave < 0) die("failed ot open slave");
+
+    pretty_log(PRETTY_INFO, "Successfully opened a new pty");
+
+    return true;
+}
+
+bool pty_init(pty_session *pty)
+{
 
     switch (pid = fork()) {
         case -1:
@@ -82,37 +100,37 @@ int tty_new(char *args[static 1])
             break;
         case 0:
             setsid();
-            dup2(slave, STDIN_FILENO);
-            dup2(slave, STDOUT_FILENO);
-            dup2(slave, STDERR_FILENO);
-            if (ioctl(slave, TIOCSCTTY, NULL) < 0)
+            dup2(pty->slave, STDIN_FILENO);
+            dup2(pty->slave, STDOUT_FILENO);
+            dup2(pty->slave, STDERR_FILENO);
+            if (ioctl(pty->slave, TIOCSCTTY, NULL) < 0)
                 die("ioctl TIOCSTTY failed: %s", strerror(errno));
 
-            if (slave > 2) close(slave);
+            if (pty->slave > 2) close(pty->slave);
 
-            exec_sh(args);
-            break;
+            exec_sh((char *[]){ "/bin/sh", NULL });
+            return false;
         default:
-            close(slave);
-            cmdfd = master;
+            close(pty->slave);
             signal(SIGCHLD, sigchld);
-            break;
+            return true;
     }
 
-    return cmdfd;
+    perror("fork");
+    return false;
 }
 
 static
-void tty_write_raw(tty_state *tty, const char *s, size_t n)
+void pty_write_raw(pty_session *pty, const char *s, size_t n)
 {
     ssize_t r;
 
     while (n > 0) {
-        r = write(tty->pty_master_fd, s, n);
+        r = write(pty->master, s, n);
 
         if (r < 0) {
             if (errno == EINTR || errno == EAGAIN) continue;
-            die("write error on tty: %s", strerror(errno));
+            die("write error on pty: %s", strerror(errno));
         }
 
         n -= r;
@@ -120,7 +138,7 @@ void tty_write_raw(tty_state *tty, const char *s, size_t n)
     }
 }
 
-void tty_write(tty_state *tty, const char *s, size_t n)
+void pty_write(pty_session *pty, const char *s, size_t n)
 {
     const char *next;
 
@@ -128,133 +146,73 @@ void tty_write(tty_state *tty, const char *s, size_t n)
     while (n > 0) {
         if (*s == '\r') {
             next = s + 1;
-            tty_write_raw(tty, "\r", 1);
+            pty_write_raw(pty, "\r", 1);
         } else {
             next = memchr(s, '\r', n);
             default_value(next, s + n);
-            tty_write_raw(tty, s, next - s);
+            pty_write_raw(pty, s, next - s);
         }
         n -= next - s;
         s = next;
     }
 }
 
-static
-inline size_t ring_count(const tty_state *tty)
-{
-    return (tty->head >= tty->tail)
-        ? (tty->head - tty->tail)
-        : (TTY_RING_CAP - (tty->tail - tty->head));
-}
 
 static
-size_t ring_write(tty_state *tty, const char *src, size_t nbytes)
+bool pty_read(term *pretty)
 {
-    size_t space = TTY_RING_CAP - 1 - ring_count(tty);
+    pty_session *pty = &pretty->pty;
 
-    if (nbytes > space) {
-        // drop excess
-        if (!tty->overwrite_oldest) nbytes = space;
-
-        // advance tail to free necessary bytes
-        else {
-            size_t fneed = nbytes - space;
-            tty->tail = (tty->tail + fneed) % TTY_RING_CAP;
-        };
-    }
-
-    // split copy across end if needed
-    size_t first = nbytes;
-    size_t end_space = TTY_RING_CAP - tty->head;
-
-    if (first > end_space) first = end_space;
-
-    memcpy(tty->buff + tty->head, src, first);
-    memcpy(tty->buff, src + first, nbytes - first);
-
-    tty->last_head = tty->head;
-    tty->head = (tty->head + nbytes) % TTY_RING_CAP;
-
-    return nbytes;
-}
-
-static
-bool tty_update(tty_state *tty)
-{
-    struct pollfd pfd = { .fd = tty->pty_master_fd, .events = POLLIN };
-    int ret = poll(&pfd, 1, 100);
+    struct pollfd pfd = { .fd = pty->master, .events = POLLIN };
+    int ret = poll(&pfd, 1, -1);
 
     if (ret < 0) {
-        if (errno == EINTR) return true;
+        if (errno == EINTR) {
+            if (pretty->pty.should_exit) return false;
+            return true;
+        }
         perror("poll");
         return false;
     }
 
     if (ret == 0) return true;
 
-    if (pfd.revents & (POLLHUP | POLLERR)) {
-        pretty_log(PRETTY_INFO, "TTY(%d) hangup or error", tty->pty_master_fd);
+    if (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) {
+        pretty_log(PRETTY_INFO, "PTY(%d) hangup or error", pty->master);
         return false;
     }
 
     if (pfd.revents & POLLIN) {
         char temp[TTY_RING_CAP];
-        ssize_t n = read(tty->pty_master_fd, temp, sizeof temp);
+        ssize_t n = read(pty->master, temp, sizeof temp);
 
         if (n > 0) {
-            pthread_mutex_lock(&tty->lock);
-
-            size_t wrote = ring_write(tty, temp, (size_t)n);
-
-            if (wrote < (size_t)n)
-                pretty_log(PRETTY_DEBUG, "Ring %s: replaced %zu oldest bytes",
-                           tty->overwrite_oldest ? "Overwrite" : "Dropped",
-                           (size_t)n - wrote);
-
-            if (!tty->buff_changed) (tty->buff_changed = true, notify_ui_flush());
-
-            pthread_mutex_unlock(&tty->lock);
+            pthread_mutex_lock(&pretty->buffer_lock);
+            ring_update(pretty, temp, (size_t)n);
+            pthread_mutex_unlock(&pretty->buffer_lock);
         } else if (n < 0 && errno == EIO) perror("read");
     }
 
     return true;
 }
 
-void *tty_poll_loop(void *arg)
+void *pty_poll_loop(void *arg)
 {
-    tty_state *tty = arg;
+    term *pretty = arg;
 
-    while (!tty->should_exit) {
-        if ((tty->child_exited = !tty_update(tty))) break;
-
-        pthread_mutex_lock(&tty->lock);
-        if (tty->buff_changed && tty->tail < tty->head) {
-            notify_ui_flush();
-            tty->buff_changed = false;
+    while (!pretty->pty.should_exit) {
+        if (!pty_read(pretty)) {
+            pretty->pty.child_exited = true;
+            break;
         }
-        pthread_mutex_unlock(&tty->lock);
+
+        pthread_mutex_lock(&pretty->buffer_lock);
+        if (pretty->buff_changed) {
+            notify_ui_flush();
+            pretty->buff_changed = false;
+        }
+        pthread_mutex_unlock(&pretty->buffer_lock);
     }
+
     return NULL;
-}
-
-
-size_t ring_read_span(const tty_state *tty, const char **ptr)
-{
-    size_t cont = ring_count(tty);
-    if (!cont) { *ptr = NULL; return 0; }
-
-    size_t end_contig = (tty->head >= tty->tail)
-        ? (tty->head - tty->tail)
-        : (TTY_RING_CAP - tty->tail);
-
-    *ptr = tty->buff + tty->tail;
-    return end_contig;
-}
-
-void ring_consume(tty_state *tty, size_t k)
-{
-    size_t cont = ring_count(tty);
-    if (k > cont) k = cont;
-
-    tty->tail = (tty->tail + k) % TTY_RING_CAP;
 }
