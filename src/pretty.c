@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/eventfd.h>
 
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_pixels.h>
@@ -19,7 +20,6 @@
 #include "config.h"
 #include "macro_utils.h"
 #include "pretty.h"
-#include "signal.h"
 #include "slave.h"
 #include "font.h"
 #include "renderer.h"
@@ -48,8 +48,10 @@ void thread_handle_quit(pty_session *pty)
     pty->should_exit = true;
     pretty_log(PRETTY_DEBUG, "waiting for thread [%lu] to exit", pty->thread);
 
-    if (pthread_kill(pty->thread, SIGUSR1) != 0) {
-        pretty_log(PRETTY_ERROR, "failed to send signal to thread");
+    uint64_t val = 1;
+    if (write(pty->wakeup_fd, &val, sizeof(val)) != sizeof(val)) {
+        pretty_log(PRETTY_ERROR, "writing to wakeup_fd failed, falling back to pthread_cancel");
+        pthread_cancel(pty->thread);
     }
 
     void *res;
@@ -104,7 +106,8 @@ int main(int argc, char **argv)
     term pretty = {
         .pty = {
             .io_lock = PTHREAD_MUTEX_INITIALIZER,
-            .child_exited = false
+            .child_exited = false,
+            .wakeup_fd = eventfd(0, EFD_NONBLOCK)
         },
         .buffer_lock = PTHREAD_MUTEX_INITIALIZER,
         .buff_changed = false,
@@ -158,6 +161,7 @@ int main(int argc, char **argv)
     }
 
     for (bool is_running = true; is_running;) {
+        SDL_StartTextInput(win);
         SDL_Event event;
 #ifdef WAIT_EVENTS
         SDL_WaitEvent(&event);
@@ -178,6 +182,13 @@ int main(int argc, char **argv)
                 case SDL_EVENT_WINDOW_EXPOSED:
                     goto render_frame;
                     break;
+                case SDL_EVENT_TEXT_INPUT: {
+                    const char *text = event.text.text;
+                    unsigned char ch = (unsigned char)text[0];
+
+                    if (ch > 0 && ch < 0x80) pty_write(&pretty.pty, (char *)&ch, sizeof(char));
+                    break;
+                }
                 case SDL_EVENT_KEY_DOWN: {
                     SDL_Keymod mod = SDL_GetModState();
 
@@ -197,16 +208,11 @@ int main(int argc, char **argv)
                             break;
                     }
 
-                    else if (event.key.key <= UCHAR_MAX && isprint(event.key.key))
-                        pty_write(&pretty.pty, (char *)&event.key.key, sizeof(char));
-
                     else if (event.key.key == SDLK_RETURN)
                         pty_write(&pretty.pty, "\r", length_of("\r"));
 
                     else if (event.key.key == SDLK_BACKSPACE)
                         pty_write(&pretty.pty, "\x7f", 1);
-
-                    else pretty_log(PRETTY_DEBUG, "unhandled key: %s", SDL_GetKeyName(event.key.key));
                     break;
                 }
                 case SDL_EVENT_MOUSE_WHEEL:
