@@ -1,11 +1,8 @@
-#include <ctype.h>
 #include <string.h>
-#include "terminal.h"
-#include "log.h"
 
-static const char *event_name[] = {
-    FOREACH_EVENT(GENERATE_STRING)
-};
+#include "terminal.h"
+#include "renderer.h"
+#include "log.h"
 
 static
 inline size_t ring_count(const term *pretty)
@@ -101,30 +98,29 @@ void calculate_scroll_internal(term *pretty, enum event dir)
             }
 
             pretty->scroll_tail = pos;
-
             break;
         }
         case SCROLL_DOWN: {
             if (pretty->scroll_tail == pretty->head) break;
 
             size_t pos = pretty->scroll_tail;
-            while (pos != pretty->head && pretty->buff[pos] != '\n')
-                pos = (pos + 1) % TTY_RING_CAP;
+            while (pos != pretty->head && pretty->buff[pos] != '\n') {
+                pos++;
+                if (pos >= TTY_RING_CAP) pos = 0;
+            }
 
-            if (pos != pretty->head && pretty->buff[pos] == '\n')
-                pos = (pos + 1) % TTY_RING_CAP;
+            if (pos != pretty->head && pretty->buff[pos] == '\n') {
+                pos++;
+                if (pos >= TTY_RING_CAP) pos = 0;
+            }
 
             if (pos != pretty->head) pretty->scroll_tail = pos;
-
             break;
         }
         default:
             pretty_log(PRETTY_ERROR, "unhandled scroll event %d", dir);
             return;
     }
-
-    pretty_log(PRETTY_DEBUG, "scroll: event=%s, tail=%zu head=%zu",
-            event_name[dir], pretty->scroll_tail, pretty->head);
 }
 
 void calculate_scroll(term *pretty, enum event dir)
@@ -134,6 +130,7 @@ void calculate_scroll(term *pretty, enum event dir)
     pthread_mutex_unlock(&pretty->buffer_lock);
 }
 
+static
 void read_to_buff(
     term *pretty,
     char *buff,
@@ -146,35 +143,71 @@ void read_to_buff(
     size_t new_bytes = ring_read_span(pretty, &p);
 
     if (new_bytes) {
-        pretty_log(PRETTY_INFO, "Processing %zu new bytes (consumed: %zu, total: %zu)",
-           new_bytes, pretty->tail, pretty->head);
-
         for (size_t i = 0; i < new_bytes; i++) {
             char ch = p[i];
-
-            if (ch == '\b' || ch == 0x7f) {
-                if (*buff_pos > 0) {
-                    (*buff_pos)--;
-                    pretty_log(PRETTY_INFO, "Backspace: removed char at position %zu", *buff_pos);
-                    buff[*buff_pos] = '\0';
-                }
-            } else if (*buff_pos < buff_size - 1) {
+            if (*buff_pos < buff_size - 1) {
                 buff[(*buff_pos)++] = ch;
                 buff[*buff_pos] = '\0';
-                pretty_log(PRETTY_INFO, "Added char '%c' at position %zu",
-                    (isprint(ch)) ? ch : '?', *buff_pos - 1);
             }
 
-            if (*buff_pos >= buff_size - 1) {
-                pretty_log(PRETTY_WARN, "buff_pos overflow, resseting");
-                *buff_pos = 0;
-            }
+            if (*buff_pos >= buff_size - 1) *buff_pos = 0;
         }
         ring_consume(pretty, new_bytes);
     }
     pthread_mutex_unlock(&pretty->buffer_lock);
 }
 
+void process_buffer(term *pretty, Grid *grid, char *buff, size_t *buff_pos, size_t buff_size)
+{
+    size_t i = *buff_pos;
+    read_to_buff(pretty, buff, buff_size, buff_pos);
+
+    bool is_at_end = (pretty->scroll_tail == pretty->last_head);
+
+    for (; i < *buff_pos; i++) {
+        unsigned char ch = buff[i];
+
+        if (ch == '\b' || ch == 0x7f) {
+            if (pretty->cursor_col > 0) {
+                pretty->cursor_col--;
+            } else if (pretty->cursor_row > 0) {
+                pretty->cursor_row--;
+                pretty->cursor_col = grid->cols - 1;
+            }
+
+            Cell *cell = &grid->cells[pretty->cursor_row * grid->cols + pretty->cursor_col];
+            cell->ch = ' ';
+            continue;
+        }
+
+        if (ch == '\n') {
+            pretty->cursor_row++;
+            pretty->cursor_col = 0;
+            continue;
+        } else if (ch == '\r') {
+            pretty->cursor_col = 0;
+            continue;
+        }
+
+        if (pretty->cursor_col >= grid->cols) {
+            pretty->cursor_col = 0;
+            pretty->cursor_row++;
+        }
+        if (pretty->cursor_row >= grid->rows) {
+           calculate_scroll(pretty, SCROLL_DOWN);
+           pretty->cursor_row = grid->rows - 1;
+        }
+
+        Cell *cell = &grid->cells[pretty->cursor_row * grid->cols + pretty->cursor_col];
+        cell->ch = (char)ch;
+
+        pretty->cursor_col++;
+    }
+
+    *buff_pos = 0;
+
+    if (!is_at_end) rebuild_grid_from_buffer(grid, pretty, pretty->buff, TTY_RING_CAP);
+}
 // TODO: What should go in here?
 // struct pty_session *term_init()
 // {

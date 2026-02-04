@@ -14,6 +14,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <SDL3/SDL.h>
 
 #include "pretty.h"
 #include "slave.h"
@@ -195,7 +196,11 @@ bool pty_read(term *pretty)
 
 void *pty_poll_loop(void *arg)
 {
-    term *pretty = arg;
+    thread_args *args = (thread_args *)arg;;
+    term *pretty = args->pretty;
+
+    const uint64_t MIN_NOTIFY_INTERVAL_MS = args->notify_interval;
+    uint64_t last_notify = 0;
 
     while (!pretty->pty.should_exit) {
         if (!pty_read(pretty)) {
@@ -205,8 +210,12 @@ void *pty_poll_loop(void *arg)
 
         pthread_mutex_lock(&pretty->buffer_lock);
         if (pretty->buff_changed) {
-            notify_ui_flush();
-            pretty->buff_changed = false;
+            uint64_t now = SDL_GetTicks();
+            if (now - last_notify >= MIN_NOTIFY_INTERVAL_MS) {
+                notify_ui_flush();
+                last_notify = now;
+                pretty->buff_changed = false;
+            }
         }
         pthread_mutex_unlock(&pretty->buffer_lock);
     }
