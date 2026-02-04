@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "pretty.h"
 #include "slave.h"
@@ -148,8 +149,11 @@ bool pty_read(term *pretty)
 {
     pty_session *pty = &pretty->pty;
 
-    struct pollfd pfd = { .fd = pty->master, .events = POLLIN };
-    int ret = poll(&pfd, 1, -1);
+    struct pollfd pfds[2] = {
+        { .fd = pty->master, .events = POLLIN },
+        { .fd = pty->wakeup_fd, .events = POLLIN },
+    };
+    int ret = poll(pfds, 2, -1);
 
     if (ret < 0) {
         if (errno == EINTR) {
@@ -160,15 +164,22 @@ bool pty_read(term *pretty)
         return false;
     }
 
+    if (pfds[1].revents & POLLIN) {
+        uint64_t dummy;
+        ssize_t n = read(pty->wakeup_fd, &dummy, sizeof(dummy));
+        if (n < 0) pretty_log(PRETTY_ERROR, "failed to read wakeupfd: %s", strerror(errno));
+        return false;
+    }
+
     if (ret == 0) return true;
 
-    if (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) {
+    if (pfds[0].revents & (POLLHUP | POLLERR | POLLNVAL)) {
         waitpid(pid, NULL, WNOHANG);
         pretty_log(PRETTY_INFO, "PTY(%d) hangup or error", pty->master);
         return false;
     }
 
-    if (pfd.revents & POLLIN) {
+    if (pfds[0].revents & POLLIN) {
         char temp[TTY_RING_CAP];
         ssize_t n = read(pty->master, temp, sizeof temp);
 

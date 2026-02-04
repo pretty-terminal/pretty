@@ -10,6 +10,7 @@ enum { TTY_RING_CAP = 64 * 1024 };
 typedef struct {
     int master;
     int slave;
+    int wakeup_fd;
 
     pthread_t thread;
     pthread_mutex_t io_lock;
