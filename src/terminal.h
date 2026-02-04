@@ -2,6 +2,7 @@
     #define TERMINAL_H
 
     #include "slave.h"
+    #include "types.h"
 
 #define FOREACH_EVENT(EVENT) \
         EVENT(SCROLL_UP)   \
@@ -24,7 +25,7 @@ enum term_mode {
     MODE_UTF8        = 1 << 6,
 };
 
-typedef struct {
+struct term {
     pty_session pty;
 
     char buff[TTY_RING_CAP]; /* TODO: think about this */
@@ -32,23 +33,19 @@ typedef struct {
     size_t last_head;
     size_t tail;
     size_t scroll_tail;
+    int cursor_col;
+    int cursor_row;
 
     pthread_mutex_t buffer_lock;
     bool buff_changed;
     bool overwrite_oldest;
-    bool auto_scroll;
-} term;
+};
 
 size_t ring_read_span(const term *pretty, const char **ptr);
 void ring_consume(term *pretty, size_t k);
 void ring_update(term *pretty, const char *src, size_t nbytes);
 void calculate_scroll_internal(term *pretty, enum event dir);
 void calculate_scroll(term *pretty, enum event dir);
-void read_to_buff(
-    term *pretty,
-    char *buff,
-    size_t buff_size,
-    size_t *buff_pos
-);
+void process_buffer(term *pretty, Grid *grid, char *buff, size_t *buff_pos, size_t buff_size);
 
 #endif // TERMINAL_H

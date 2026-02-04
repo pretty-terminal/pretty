@@ -6,6 +6,8 @@
     #include <stdarg.h>
 
     #include "log.h"
+    #include "terminal.h"
+    #include "stdint.h"
 
 static inline __attribute__((format(printf, 1, 2)))
 void die(const char *errstr, ...)
@@ -21,6 +23,11 @@ void die(const char *errstr, ...)
 
     exit(EXIT_FAILURE);
 }
+
+typedef struct {
+    term *pretty;
+    uint64_t notify_interval;
+} thread_args;
 
 char *file_read(char const *filepath);
 void notify_ui_flush(void);

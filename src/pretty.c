@@ -1,13 +1,16 @@
-#include <ctype.h>
+#include <SDL3/SDL_rect.h>
+#include <SDL3/SDL_timer.h>
 #include <getopt.h>
 #include <limits.h>
 #include <pthread.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/eventfd.h>
+#include <sys/ioctl.h>
 
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_pixels.h>
@@ -28,8 +31,6 @@
 
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 720
-
-#define TEST_COMMAND "python tests/plop.py\r"
 
 static struct option LONG_OPTIONS[] = {
     {"config", required_argument, 0, 'c'},
@@ -112,14 +113,13 @@ int main(int argc, char **argv)
         .buffer_lock = PTHREAD_MUTEX_INITIALIZER,
         .buff_changed = false,
         .overwrite_oldest = true,
-        .auto_scroll = true,
+        .cursor_col = 0,
+        .cursor_row = 0
     };
 
     if (!pty_pair(&pretty.pty)) die("failed to pair pty");
 
     if (!pty_init(&pretty.pty)) die("failed to initialize pty");
-
-    if (pthread_create(&pretty.pty.thread, NULL, pty_poll_loop, &pretty) != 0) return EXIT_FAILURE;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         pretty_log(PRETTY_ERROR, "Couldn't initialize SDL: %s", SDL_GetError());
@@ -142,6 +142,16 @@ int main(int argc, char **argv)
         return SDL_APP_FAILURE;
     }
 
+    SDL_DisplayID display = SDL_GetPrimaryDisplay();
+    const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(display);
+
+    thread_args args = {
+        .pretty = &pretty,
+        .notify_interval = 1000 / mode->refresh_rate,
+    };
+
+    if (pthread_create(&pretty.pty.thread, NULL, pty_poll_loop, &args) != 0) return EXIT_FAILURE;
+
     SDL_SetRenderDrawColor(renderer,
         HEX_TO_RGBA(config->color_palette[COLOR_BACKGROUND]));
 #ifdef WAIT_EVENTS
@@ -160,14 +170,17 @@ int main(int argc, char **argv)
         goto quit;
     }
 
+    Grid grid;
+    grid.cells = calloc(SCREEN_HEIGHT * SCREEN_WIDTH, sizeof(Cell));
+    grid.rows = SCREEN_HEIGHT;
+    grid.cols = SCREEN_WIDTH;
+
+    SDL_StartTextInput(win);
+    SDL_SetRenderVSync(renderer, 1);
+
     for (bool is_running = true; is_running;) {
-        SDL_StartTextInput(win);
         SDL_Event event;
-#ifdef WAIT_EVENTS
-        SDL_WaitEvent(&event);
-#else
         for (; SDL_PollEvent(&event); ) {
-#endif
             switch (event.type) {
                 case SDL_EVENT_QUIT:
                     is_running = false;
@@ -175,12 +188,17 @@ int main(int argc, char **argv)
                 case SDL_EVENT_WINDOW_RESIZED:
                     win_size.width = event.window.data1;
                     win_size.height = event.window.data2;
-                    pretty_log(PRETTY_INFO, "Window resized: %dx%d",
-                            win_size.width, win_size.height);
-                    goto render_frame;
+
+                    int new_cols = win_size.width / atlas->w;
+                    int new_rows = win_size.height / atlas->h;
+
+                    grid_resize(&grid, new_rows, new_cols);
+
+                    if (pretty.cursor_col >= grid.cols) pretty.cursor_col = grid.cols - 1;
+                    if (pretty.cursor_row >= grid.rows) pretty.cursor_row = grid.rows - 1;
+
                     break;
                 case SDL_EVENT_WINDOW_EXPOSED:
-                    goto render_frame;
                     break;
                 case SDL_EVENT_TEXT_INPUT: {
                     const char *text = event.text.text;
@@ -216,33 +234,23 @@ int main(int argc, char **argv)
                     break;
                 }
                 case SDL_EVENT_MOUSE_WHEEL:
-                    pretty.auto_scroll = false;
                     if (event.wheel.y > 0) calculate_scroll(&pretty, SCROLL_UP);
                     else if (event.wheel.y < 0) calculate_scroll(&pretty, SCROLL_DOWN);
 
-                    read_to_buff(&pretty, buff, sizeof(buff), &buff_pos);
-                    goto render_frame;
+                    rebuild_grid_from_buffer(&grid, &pretty, pretty.buff, TTY_RING_CAP);
                     break;
                 case SDL_EVENT_USER:
-                    read_to_buff(&pretty, buff, sizeof(buff), &buff_pos);
-                    goto render_frame;
-
-render_frame:
-                    if (!render_frame(renderer, atlas, win_size, &pretty, buff,
-                                sizeof(buff), &buff_pos, &font, config))
-                    {
-                        is_running = false;
-                        continue;
-                    }
-                    if (pretty.scroll_tail == pretty.last_head) pretty.auto_scroll = true;
+                    process_buffer(&pretty, &grid, buff, &buff_pos, sizeof(buff));
                     break;
                 default:
                     break;
             }
-#ifndef WAIT_EVENTS
         }
-#endif
-        display_fps_metrics(win);
+
+        if (!render_frame(renderer, atlas, &grid, config))
+            is_running = false;
+
+        display_fps_metrics(win, mode);
 
         if (pretty.pty.child_exited) {
             is_running = false;

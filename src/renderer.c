@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -6,26 +5,29 @@
 #include "SDL3_ttf/SDL_ttf.h"
 #include "macro_utils.h"
 #include "renderer.h"
-#include "pthread.h"
 #include "slave.h"
+#include "log.h"
 #include "terminal.h"
-#include "pretty.h"
 
-void display_fps_metrics(SDL_Window *win)
+void display_fps_metrics(SDL_Window *win, const SDL_DisplayMode *mode)
 {
-    static unsigned short frames = 0;
-    static Uint64 last_time = 0;
+    static unsigned int frame_count = 0;
+    static uint64_t last_time = 0;
 
-    frames++;
-    Uint64 current_time = SDL_GetTicks();
+    frame_count++;
+    uint64_t current_time = SDL_GetTicks();
+    uint64_t elapsed = current_time - last_time;
 
-    if (current_time - last_time >= 1000) {
-        char title[length_of("Pretty | ...... fps")];
+    if (elapsed >= 1000) {
+        float actual_fps = (float)frame_count / (elapsed / 1000.0f);
 
-        snprintf(title, sizeof title, "Pretty | %6hu fps", frames);
+        char title[64];
+        snprintf(title, sizeof(title), "Pretty | %.1f/%.0f fps", 
+                 actual_fps, mode->refresh_rate);
         SDL_SetWindowTitle(win, title);
+
         last_time = current_time;
-        frames = 0;
+        frame_count = 0;
     }
 }
 
@@ -80,77 +82,111 @@ glyph_atlas *create_atlas(SDL_Renderer *renderer, TTF_Font *font, generic_config
         SDL_DestroySurface(s);
         SDL_DestroyTexture(t);
     }
+    int total_glyphs = 0;
+    for (int i = ' '; i <= '~'; i++) {
+        if (atlas->glyphs[i].w > 0) total_glyphs++;
+    }
+
+    pretty_log(PRETTY_INFO, "Atlas baked: %d glyphs. Cell size: %dx%d", 
+           total_glyphs, atlas->w, atlas->h);
 
     SDL_SetRenderTarget(renderer, NULL);
     return atlas;
 }
 
+void grid_resize(Grid *grid, int new_rows, int new_cols) {
+    Cell *new_cells = calloc(new_rows * new_cols, sizeof(Cell));
+    if (!new_cells) return;
+
+    int copy_rows = (new_rows < grid->rows) ? new_rows : grid->rows;
+    int copy_cols = (new_cols < grid->cols) ? new_cols : grid->cols;
+
+    for (int r = 0; r < copy_rows; r++) {
+        Cell *old_row_start = &grid->cells[r * grid->cols];
+        Cell *new_row_start = &new_cells[r * new_cols];
+        memcpy(new_row_start, old_row_start, copy_cols * sizeof(Cell));
+    }
+
+    free(grid->cells);
+    grid->cells = new_cells;
+    grid->rows = new_rows;
+    grid->cols = new_cols;
+}
+
+
+void rebuild_grid_from_buffer(Grid *grid, term *pretty, char *ring_buffer, size_t ring_size) {
+    memset(grid->cells, 0, grid->rows * grid->cols * sizeof(Cell));
+
+    int row = 0;
+    int col = 0;
+    size_t pos = pretty->scroll_tail;
+
+    while (pos != pretty->head && row < grid->rows) {
+        char ch = ring_buffer[pos];
+
+        if (ch == '\n') {
+            row++;
+            col = 0;
+        } else if (ch == '\r') {
+            col = 0;
+        } else if (ch == '\b' || ch == 0x7f) {
+            if (col > 0) {
+                col--;
+                grid->cells[row * grid->cols + col].ch = ' ';
+            } else if (row > 0) {
+                row--;
+                col = grid->cols - 1;
+                grid->cells[row * grid->cols + col].ch = ' ';
+            }
+        } else if (ch >= ' ' && ch <= '~') {
+            if (col >= grid->cols) {
+                row++;
+                col = 0;
+                if (row >= grid->rows) break;
+            }
+
+            grid->cells[row * grid->cols + col].ch = ch;
+            col++;
+        }
+        pos = (pos + 1) % ring_size;
+    }
+
+    pretty->cursor_row = row;
+    pretty->cursor_col = col;
+}
+
 bool render_frame(
     SDL_Renderer *renderer,
     glyph_atlas *atlas,
-    struct dim win_size,
-    term *pretty,
-    char *text,
-    size_t buff_size,
-    size_t *buff_pos,
-    font_info *font,
+    Grid *grid,
     generic_config *conf)
 {
-    pthread_mutex_lock(&pretty->buffer_lock);
+    SDL_Color bg = {
+        HEX_TO_RGB(conf->color_palette[COLOR_BACKGROUND]),
+        .a = 255
+    };
 
-    SDL_Color bg = { HEX_TO_RGB(conf->color_palette[COLOR_BACKGROUND]), .a=255 };
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
-
     SDL_RenderClear(renderer);
 
-    unsigned int x = conf->pad_x;
-    unsigned int y = conf->pad_y;
+    for (int row = 0; row < grid->rows; row++) {
+        for (int col = 0; col < grid->cols; col++) {
+            Cell *c = &grid->cells[row * grid->cols + col];
 
-    size_t line_max_width = (win_size.width - (2 * x)) / font->advance;
-    size_t line_max_count= (win_size.height - (2 * y)) / font->line_skip;
+            if (c->ch == '\0' || c->ch == ' ') continue;
 
-    size_t pos = pretty->scroll_tail;
-    size_t line_count = 0;
+            SDL_FRect src = atlas->glyphs[(unsigned char)c->ch];
+            SDL_FRect dst = {
+                .x = col * atlas->w,
+                .y = row * atlas->h,
+                .w = atlas->w,
+                .h = atlas->h
+            };
 
-    while (pos != *buff_pos && line_count < line_max_count) {
-        size_t current_line_len = 0;
-
-        while (pos != *buff_pos
-            && text[pos] != '\n'
-            && current_line_len < line_max_width)
-        {
-            char c = text[pos];
-
-            if (isprint(c)) {
-                SDL_FRect src_rect = atlas->glyphs[(unsigned char)c];
-
-                SDL_FRect dst_rect = {
-                    (float)(x + (current_line_len * font->advance)),
-                    (float)y,
-                    (float)font->advance,
-                    (float)font->line_skip
-                };
-
-                SDL_RenderTexture(renderer, atlas->texture, &src_rect, &dst_rect);
-            }
-
-            current_line_len++;
-            pos = (pos + 1) % buff_size;
+            SDL_RenderTexture(renderer, atlas->texture, &src, &dst);
         }
-
-        if (pos != *buff_pos && text[pos] == '\n') pos = (pos + 1) % buff_size;
-
-        line_count++;
-
-        if (line_count < line_max_count) y += font->line_skip;
-
     }
 
-    if (pretty->auto_scroll && line_count >= line_max_count && pos != *buff_pos)
-        calculate_scroll_internal(pretty, SCROLL_DOWN);
-
     SDL_RenderPresent(renderer);
-    pthread_mutex_unlock(&pretty->buffer_lock);
-
     return true;
 }
