@@ -193,3 +193,10 @@ bool render_frame(
     SDL_RenderPresent(renderer);
     return true;
 }
+
+void notify_ui_flush(void)
+{
+    static SDL_Event ev = { .type = SDL_EVENT_USER };
+
+    SDL_PushEvent(&ev);
+}

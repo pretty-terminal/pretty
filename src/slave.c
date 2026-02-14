@@ -22,6 +22,7 @@
 #include "pthread.h"
 #include "log.h"
 #include "terminal.h"
+#include "renderer.h"
 
 static pid_t pid;
 
