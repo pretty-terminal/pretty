@@ -170,10 +170,13 @@ int main(int argc, char **argv)
         goto quit;
     }
 
+    int available_width = SCREEN_WIDTH - (2 * config->pad_x);
+    int available_height = SCREEN_HEIGHT - (2 * config->pad_y);
+
     Grid grid;
-    grid.cells = calloc(SCREEN_HEIGHT * SCREEN_WIDTH, sizeof(Cell));
-    grid.rows = SCREEN_HEIGHT;
-    grid.cols = SCREEN_WIDTH;
+    grid.rows = available_height / atlas->h;
+    grid.cols = available_width / atlas->w;
+    grid.cells = calloc(grid.rows * grid.cols, sizeof(Cell));
 
     SDL_StartTextInput(win);
     SDL_SetRenderVSync(renderer, 1);
@@ -189,8 +192,11 @@ int main(int argc, char **argv)
                     win_size.width = event.window.data1;
                     win_size.height = event.window.data2;
 
-                    int new_cols = win_size.width / atlas->w;
-                    int new_rows = win_size.height / atlas->h;
+                    available_width = win_size.width - (2 * config->pad_x);
+                    available_height = win_size.height - (2 * config->pad_y);
+
+                    int new_cols = available_width / atlas->w;
+                    int new_rows = available_height / atlas->h;
 
                     grid_resize(&grid, new_rows, new_cols);
 

@@ -166,6 +166,9 @@ bool render_frame(
         .a = 255
     };
 
+    unsigned int x = conf->pad_x;
+    unsigned int y = conf->pad_y;
+
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderClear(renderer);
 
@@ -177,8 +180,8 @@ bool render_frame(
 
             SDL_FRect src = atlas->glyphs[(unsigned char)c->ch];
             SDL_FRect dst = {
-                .x = col * atlas->w,
-                .y = row * atlas->h,
+                .x = x + col * atlas->w,
+                .y = y + row * atlas->h,
                 .w = atlas->w,
                 .h = atlas->h
             };
