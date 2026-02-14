@@ -37,30 +37,7 @@ static struct option LONG_OPTIONS[] = {
     {0,        0,                 0,  0 }
 };
 
-void notify_ui_flush(void)
-{
-    static SDL_Event ev = { .type = SDL_EVENT_USER };
-
-    SDL_PushEvent(&ev);
-}
-
-void thread_handle_quit(pty_session *pty)
-{
-    pty->should_exit = true;
-    pretty_log(PRETTY_DEBUG, "waiting for thread [%lu] to exit", pty->thread);
-
-    uint64_t val = 1;
-    if (write(pty->wakeup_fd, &val, sizeof(val)) != sizeof(val)) {
-        pretty_log(PRETTY_ERROR, "writing to wakeup_fd failed, falling back to pthread_cancel");
-        pthread_cancel(pty->thread);
-    }
-
-    void *res;
-    int s = pthread_join(pty->thread, &res);
-
-    if (s != 0) pretty_log(PRETTY_ERROR, "pthread_join failed");
-    else pretty_log(PRETTY_DEBUG, "thread [%lu] exited cleanly", pty->thread);
-}
+static void thread_handle_quit(pty_session *pty);
 
 int main(int argc, char **argv)
 {
@@ -278,4 +255,23 @@ quit:
     pretty_log(PRETTY_INFO, "Succesfully closed Pretty instance");
 
     return EXIT_SUCCESS;
+}
+
+static
+void thread_handle_quit(pty_session *pty)
+{
+    pty->should_exit = true;
+    pretty_log(PRETTY_INFO, "waiting for thread [%lu] to exit", pty->thread);
+
+    uint64_t val = 1;
+    if (write(pty->wakeup_fd, &val, sizeof(val)) != sizeof(val)) {
+        pretty_log(PRETTY_ERROR, "writing to wakeup_fd failed, falling back to pthread_cancel");
+        pthread_cancel(pty->thread);
+    }
+
+    void *res;
+    int s = pthread_join(pty->thread, &res);
+
+    if (s != 0) pretty_log(PRETTY_ERROR, "pthread_join failed");
+    else pretty_log(PRETTY_INFO, "thread [%lu] exited cleanly", pty->thread);
 }

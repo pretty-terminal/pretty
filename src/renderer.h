@@ -41,5 +41,7 @@ bool render_frame(
     Grid *grid,
     generic_config *conf
 );
+void notify_ui_flush(void);
+
 
 #endif // RENDERER_H
