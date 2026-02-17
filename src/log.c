@@ -10,11 +10,15 @@
 char *pretty_log_get_time(void)
 {
     static char timebuf[16];
-    time_t now = time(NULL);
-    struct tm local;
-    localtime_r(&now, &local);
+    static time_t last = 0;
 
-    strftime(timebuf, sizeof(timebuf), "%H:%M:%S", &local);
+    time_t now = time(NULL);
+    if (now != last) {
+        last = now;
+        struct tm local;
+        localtime_r(&now, &local);
+        strftime(timebuf, sizeof(timebuf), "%H:%M:%S", &local);
+    }
 
     return timebuf;
 }
