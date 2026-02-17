@@ -24,7 +24,7 @@ void pretty_log_full(enum log_level level, const char *text, ...)
     static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&log_mutex);
 
-    char message[BUFSIZ - 64];
+    char message[BUFSIZ];
 
     va_list args;
     va_start(args, text);

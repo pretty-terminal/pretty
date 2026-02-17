@@ -16,12 +16,20 @@ char *pretty_log_get_time(void);
 #ifdef DEBUG_MODE
     #define LOG_HEAD "[%s | %s] @ %s:%d: "
     #define LOG_HEAD_ARGS(lvl) pretty_log_get_time(), #lvl, __FILE__, __LINE__
+    #define pretty_log(lvl, msg, ...)               \
+        do {                                        \
+            pretty_log_full(lvl, LOG_HEAD msg,      \
+                LOG_HEAD_ARGS(lvl), ##__VA_ARGS__); \
+        } while (0)
 #else
     #define LOG_HEAD "[%s | %s]: "
     #define LOG_HEAD_ARGS(lvl) pretty_log_get_time(), #lvl
+    #define pretty_log(lvl, msg, ...)                   \
+        do {                                            \
+            if ((lvl) != PRETTY_DEBUG)                  \
+                pretty_log_full(lvl, LOG_HEAD msg,      \
+                    LOG_HEAD_ARGS(lvl), ##__VA_ARGS__); \
+        } while (0)
 #endif
-
-#define pretty_log(lvl, msg, ...) \
-    pretty_log_full(lvl, LOG_HEAD msg, LOG_HEAD_ARGS(lvl), ##__VA_ARGS__)
 
 #endif // LOG_H
