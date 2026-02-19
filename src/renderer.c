@@ -124,29 +124,37 @@ void rebuild_grid_from_buffer(Grid *grid, term *pretty, char *ring_buffer, size_
     while (pos != pretty->head && row < grid->rows) {
         char ch = ring_buffer[pos];
 
-        if (ch == '\n') {
-            row++;
-            col = 0;
-        } else if (ch == '\r') {
-            col = 0;
-        } else if (ch == '\b' || ch == 0x7f) {
-            if (col > 0) {
-                col--;
-                grid->cells[row * grid->cols + col].ch = ' ';
-            } else if (row > 0) {
-                row--;
-                col = grid->cols - 1;
-                grid->cells[row * grid->cols + col].ch = ' ';
-            }
-        } else if (ch >= ' ' && ch <= '~') {
-            if (col >= grid->cols) {
+        switch (ch) {
+            case '\n':
                 row++;
                 col = 0;
-                if (row >= grid->rows) break;
-            }
+                break;
+            case '\r':
+                col = 0;
+                break;
+            case '\b':
+            case 0x7f:
+                if (col > 0) {
+                    col--;
+                    grid->cells[row * grid->cols + col].ch = ' ';
+                } else if (row > 0) {
+                    row--;
+                    col = grid->cols - 1;
+                    grid->cells[row * grid->cols + col].ch = ' ';
+                }
+                break;
+            default:
+                if (ch >= ' ' && ch <= '~') {
+                    if (col >= grid->cols) {
+                        row++;
+                        col = 0;
+                        if (row >= grid->rows) break;
+                    }
 
-            grid->cells[row * grid->cols + col].ch = ch;
-            col++;
+                    grid->cells[row * grid->cols + col].ch = ch;
+                    col++;
+                }
+                break;
         }
         pos = (pos + 1) % ring_size;
     }
