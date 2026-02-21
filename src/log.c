@@ -10,11 +10,15 @@
 char *pretty_log_get_time(void)
 {
     static char timebuf[16];
-    time_t now = time(NULL);
-    struct tm local;
-    localtime_r(&now, &local);
+    static time_t last = 0;
 
-    strftime(timebuf, sizeof(timebuf), "%H:%M:%S", &local);
+    time_t now = time(NULL);
+    if (now != last) {
+        last = now;
+        struct tm local;
+        localtime_r(&now, &local);
+        strftime(timebuf, sizeof(timebuf), "%H:%M:%S", &local);
+    }
 
     return timebuf;
 }
@@ -24,7 +28,7 @@ void pretty_log_full(enum log_level level, const char *text, ...)
     static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&log_mutex);
 
-    char message[BUFSIZ - 64];
+    char message[BUFSIZ];
 
     va_list args;
     va_start(args, text);
